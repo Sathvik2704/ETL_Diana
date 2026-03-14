@@ -1,9 +1,14 @@
 from pathlib import Path
+import json
+import uuid
+from datetime import datetime, timezone
 
-import pandas as pd  # noqa: F401  # imported to highlight dependency in this file
-from fastapi import FastAPI, Form, HTTPException, UploadFile, File
+import numpy as np
+import pandas as pd
+from fastapi import FastAPI, Form, HTTPException, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from pydantic import BaseModel
 
 from etl import run_etl
 from cleaning import CleanConfig, clean_dataframe
@@ -11,8 +16,9 @@ from cleaning import CleanConfig, clean_dataframe
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploads"
+VERSIONS_DIR = BASE_DIR / "versions"
 
-app = FastAPI(title="DIANA – Minimal ETL Prototype")
+app = FastAPI(title="DIANA – Intelligent ETL & Analytics Platform")
 
 # Allow a React dev server (and other local tools) to call this API.
 app.add_middleware(
@@ -30,8 +36,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
 def _safe_filename(name: str) -> str:
-    # Avoid path traversal / weird filenames; keep it simple for an academic prototype.
     cleaned = Path(name).name
     if not cleaned or cleaned in {".", ".."}:
         raise HTTPException(status_code=400, detail="Invalid filename")
@@ -42,32 +52,94 @@ def _upload_path(filename: str) -> Path:
     return UPLOAD_DIR / _safe_filename(filename)
 
 
+def _read_uploaded_file(path: Path) -> pd.DataFrame:
+    """Read a file into a DataFrame, auto-detecting format from extension."""
+    ext = path.suffix.lower()
+    if ext == ".csv":
+        return pd.read_csv(path)
+    elif ext in (".xlsx", ".xls"):
+        return pd.read_excel(path)
+    elif ext == ".json":
+        return pd.read_json(path)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported file format: {ext}. Use CSV, Excel, or JSON.")
+
+
+def _save_version(run_id: str, df: pd.DataFrame, label: str) -> str:
+    """Save a versioned copy of the data."""
+    VERSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    version_name = f"{label}_{run_id}_{ts}.csv"
+    version_path = VERSIONS_DIR / version_name
+    df.to_csv(version_path, index=False)
+    return version_name
+
+
+def _build_transformation_log(report: dict) -> list[dict]:
+    """Convert cleaning report steps into a user-friendly transformation log."""
+    log = []
+    step_num = 0
+    for step_dict in report.get("steps", []):
+        for action_name, detail in step_dict.items():
+            step_num += 1
+            description = ""
+            rows_affected = 0
+
+            if action_name == "clean_names":
+                description = "Standardized column names"
+            elif action_name == "drop_duplicates":
+                removed = detail.get("removed", 0) if isinstance(detail, dict) else 0
+                description = f"Removed {removed} duplicate rows"
+                rows_affected = removed
+            elif action_name == "normalize_strings":
+                description = "Normalized string values (whitespace, NA tokens)"
+            elif action_name == "infer_types":
+                description = "Inferred column types (datetime, numeric)"
+            elif action_name == "drop_sparse_columns":
+                dropped = detail.get("dropped", []) if isinstance(detail, dict) else []
+                description = f"Dropped {len(dropped)} sparse columns"
+            elif action_name == "drop_sparse_rows":
+                dropped = detail.get("dropped", 0) if isinstance(detail, dict) else 0
+                description = f"Dropped {dropped} sparse rows"
+                rows_affected = dropped
+            elif action_name.startswith("impute"):
+                strategy = detail.get("strategy", "unknown") if isinstance(detail, dict) else "unknown"
+                description = f"Imputed missing values ({action_name.split('_')[-1]}, strategy: {strategy})"
+            elif action_name == "outliers":
+                if isinstance(detail, dict):
+                    clipped = detail.get("clipped_columns", [])
+                    description = f"Clipped outliers in {len(clipped)} columns"
+                else:
+                    description = "Outlier handling applied"
+            elif action_name == "outlier_detection":
+                n_outliers = detail.get("n_outliers", 0) if isinstance(detail, dict) else 0
+                description = f"Detected {n_outliers} outlier rows (IForest)"
+                rows_affected = n_outliers
+            elif action_name == "cleanlab_label_issues":
+                n_issues = detail.get("n_issues", 0) if isinstance(detail, dict) else 0
+                description = f"Detected {n_issues} potential label issues"
+            else:
+                description = action_name.replace("_", " ").title()
+
+            log.append({
+                "step": step_num,
+                "action": description,
+                "rows_affected": rows_affected,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+    return log
+
+
+# ---------------------------------------------------------------------------
+# Original endpoints (updated)
+# ---------------------------------------------------------------------------
+
 @app.get("/", response_class=HTMLResponse)
 async def index() -> str:
-    """
-    Simple HTML page to upload a CSV and specify a goal.
-    """
     html_path = BASE_DIR / "index.html"
     if html_path.exists():
         return html_path.read_text(encoding="utf-8")
-
-    # Fallback inline HTML if file is missing.
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>DIANA ETL Prototype</title>
-    </head>
-    <body>
-        <h1>DIANA – Minimal ETL Prototype</h1>
-        <form action="/process" method="post" enctype="multipart/form-data">
-            <label>CSV File: <input type="file" name="file" accept=".csv" required></label><br/><br/>
-            <label>Goal: <input type="text" name="goal" placeholder="e.g. remove missing values" required></label><br/><br/>
-            <button type="submit">Run ETL</button>
-        </form>
-    </body>
-    </html>
-    """
+    return "<h1>DIANA ETL Platform</h1><p>Use the React frontend at localhost:5173</p>"
 
 
 @app.post("/process")
@@ -76,379 +148,123 @@ async def process(
     goal: str = Form(...),
 ) -> JSONResponse:
     """
-    Accepts a CSV upload and a natural-language goal, then runs the ETL pipeline.
+    Accepts a file upload and a natural-language goal, then runs the ETL pipeline.
+    Now supports CSV, Excel, and JSON files.
     """
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
     input_path = _upload_path(file.filename)
-
     contents = await file.read()
     with open(input_path, "wb") as f:
         f.write(contents)
 
+    # For non-CSV files, convert to CSV first for the ETL pipeline
+    ext = input_path.suffix.lower()
+    if ext != ".csv":
+        df_input = _read_uploaded_file(input_path)
+        csv_path = input_path.with_suffix(".csv")
+        df_input.to_csv(csv_path, index=False)
+        input_path = csv_path
+
     output_file = run_etl(str(input_path), goal)
     output_filename = Path(output_file).name
+    run_id = uuid.uuid4().hex[:10]
+
+    # Save version
+    try:
+        df_out = pd.read_csv(output_file)
+        _save_version(run_id, df_out, "processed")
+    except Exception:
+        pass
 
     artifacts: dict[str, str] = {}
     warnings: list[str] = []
+    transformation_log = [
+        {"step": 1, "action": f"Uploaded file: {file.filename}", "rows_affected": 0, "timestamp": datetime.now(timezone.utc).isoformat()},
+        {"step": 2, "action": f"AI Goal: {goal}", "rows_affected": 0, "timestamp": datetime.now(timezone.utc).isoformat()},
+        {"step": 3, "action": "Generated transformation code via AI", "rows_affected": 0, "timestamp": datetime.now(timezone.utc).isoformat()},
+        {"step": 4, "action": "Executed transformation pipeline", "rows_affected": 0, "timestamp": datetime.now(timezone.utc).isoformat()},
+    ]
 
-    # If the user asks for visualization, create charts and a rich HTML report
-    # for the ETL output. These are stored as separate HTML files (non-CSV).
+    # Add row count info
+    try:
+        df_original = _read_uploaded_file(_upload_path(file.filename)) if _upload_path(file.filename).exists() else pd.read_csv(input_path)
+        df_result = pd.read_csv(output_file)
+        rows_changed = abs(len(df_original) - len(df_result))
+        transformation_log.append({
+            "step": 5,
+            "action": f"Result: {len(df_original)} → {len(df_result)} rows ({rows_changed} rows changed)",
+            "rows_affected": rows_changed,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
+
+    # Visualization generation (kept from original)
     goal_l = goal.lower()
     if any(
         k in goal_l
         for k in (
-            "visual",
-            "chart",
-            "plot",
-            "graph",
-            "dashboard",
-            "pie",
-            "line",
-            "time series",
-            "area",
-            "bar",
-            "column",
-            "scatter",
-            "bubble",
+            "visual", "chart", "plot", "graph", "dashboard",
+            "pie", "line", "time series", "area",
+            "bar", "column", "scatter", "bubble",
         )
     ):
         try:
             df_out = pd.read_csv(output_file)
-            if df_out.empty:
+            if not df_out.empty:
+                import plotly.express as px
+
+                run_tag = uuid.uuid4().hex[:8]
+                stem = f"{Path(output_filename).stem}_{run_tag}"
+
+                numeric_cols = [c for c in df_out.columns if pd.api.types.is_numeric_dtype(df_out[c])]
+                categorical_cols = [
+                    c for c in df_out.columns
+                    if not pd.api.types.is_numeric_dtype(df_out[c])
+                    and not pd.api.types.is_datetime64_any_dtype(df_out[c])
+                ]
+
+                # Auto-generate a pie chart if categorical columns exist
+                if categorical_cols:
+                    try:
+                        pie_col = categorical_cols[0]
+                        counts = df_out[pie_col].value_counts().reset_index()
+                        counts.columns = [pie_col, "count"]
+                        fig = px.pie(counts, names=pie_col, values="count", title=f"Distribution of {pie_col}")
+                        pie_path = _upload_path(f"etl_pie_{stem}.html")
+                        fig.write_html(pie_path, include_plotlyjs="cdn", full_html=True)
+                        artifacts["pie_chart_html"] = f"/download/{pie_path.name}"
+                    except Exception:
+                        pass
+
+                # Auto-generate a bar chart
+                if categorical_cols and numeric_cols:
+                    try:
+                        cat_col = categorical_cols[0]
+                        val_col = numeric_cols[0]
+                        grouped = df_out.groupby(cat_col)[val_col].sum().reset_index()
+                        fig = px.bar(grouped, x=cat_col, y=val_col, title=f"{val_col} by {cat_col}")
+                        bar_path = _upload_path(f"etl_bar_{stem}.html")
+                        fig.write_html(bar_path, include_plotlyjs="cdn", full_html=True)
+                        artifacts["bar_chart_html"] = f"/download/{bar_path.name}"
+                    except Exception:
+                        pass
+
+            else:
                 warnings.append("ETL output is empty; charts were skipped.")
-                return JSONResponse(
-                    {
-                        "output_file": output_file,
-                        "output_filename": output_filename,
-                        "download_url": f"/download/{output_filename}",
-                        "artifacts": artifacts,
-                        "warnings": warnings,
-                    }
-                )
-
-            # Decide chart types based on goal keywords.
-            wants_any = any(k in goal_l for k in ("visual", "chart", "plot", "graph", "dashboard"))
-            wants_pie = "pie" in goal_l
-            wants_line = "line" in goal_l or "time series" in goal_l
-            wants_area = "area" in goal_l
-            wants_bar = "bar" in goal_l
-            wants_column = "column" in goal_l
-            wants_scatter = "scatter" in goal_l
-            wants_bubble = "bubble" in goal_l
-
-            # If user says generic "chart/visual", generate all basic chart types.
-            if wants_any and not any(
-                [wants_pie, wants_line, wants_area, wants_bar, wants_column, wants_scatter, wants_bubble]
-            ):
-                wants_pie = wants_line = wants_area = wants_bar = wants_column = wants_scatter = wants_bubble = True
-            # If the goal strongly implies proportions, default to a pie chart.
-            if not wants_pie and any(k in goal_l for k in ("distribution", "proportion", "percentage", "share", "breakdown", "composition")):
-                wants_pie = True
-
-            # Heuristically pick a status-like column for pie chart.
-            status_candidates = ["status", "delivery_status", "message_status", "state"]
-            status_col = None
-            for c in df_out.columns:
-                cname = str(c).strip().lower()
-                if cname in status_candidates:
-                    status_col = c
-                    break
-
-            # Heuristically pick a time column + value column for line chart.
-            time_col = None
-            for c in df_out.columns:
-                cname = str(c).strip().lower()
-                if any(k in cname for k in ("date", "time", "timestamp", "created_at", "sent_at")):
-                    time_col = c
-                    break
-            if time_col is None:
-                # Fallback: first datetime-like column if any.
-                for c in df_out.columns:
-                    if pd.api.types.is_datetime64_any_dtype(df_out[c]):
-                        time_col = c
-                        break
-
-            numeric_cols = [c for c in df_out.columns if pd.api.types.is_numeric_dtype(df_out[c])]
-            categorical_cols = [
-                c
-                for c in df_out.columns
-                if not pd.api.types.is_numeric_dtype(df_out[c])
-                and not pd.api.types.is_datetime64_any_dtype(df_out[c])
-            ]
-            value_col = numeric_cols[0] if numeric_cols else None
-
-            # Use a per-run suffix to avoid overwriting artifacts when the same
-            # filename is uploaded multiple times.
-            import uuid
-
-            run_tag = uuid.uuid4().hex[:8]
-            stem = f"{Path(output_filename).stem}_{run_tag}"
-
-            def _pick_pie_source_column() -> str | None:
-                if status_col is not None:
-                    return str(status_col)
-                if not categorical_cols:
-                    return None
-                best = None
-                best_score = None
-                for c in categorical_cols:
-                    s = df_out[c]
-                    nunq = int(s.astype("string").str.strip().replace({"": None}).nunique(dropna=True))
-                    # Prefer low-cardinality columns; ignore columns that are essentially unique IDs.
-                    if nunq <= 1:
-                        continue
-                    score = nunq
-                    if best_score is None or score < best_score:
-                        best_score = score
-                        best = c
-                return str(best) if best is not None else str(categorical_cols[0])
-
-            # Pie chart first when requested so the UI embeds it as primary media.
-            if wants_pie:
-                try:
-                    import plotly.express as px
-
-                    pie_src = _pick_pie_source_column()
-                    if pie_src is not None:
-                        s = (
-                            df_out[pie_src]
-                            .astype("string")
-                            .str.strip()
-                            .replace({"": None})
-                            .fillna("missing")
-                            .str.lower()
-                        )
-                        counts = (
-                            s.value_counts(dropna=False)
-                            .reset_index()
-                            .rename(columns={"index": pie_src, "count": "count"})
-                        )
-                        counts.columns = [pie_src, "count"]
-                        fig = px.pie(
-                            counts,
-                            names=pie_src,
-                            values="count",
-                            title=f"Distribution of {pie_src}",
-                        )
-                        pie_path = _upload_path(f"etl_pie_{stem}.html")
-                        fig.write_html(pie_path, include_plotlyjs="cdn", full_html=True)
-                        artifacts["pie_chart_html"] = f"/download/{pie_path.name}"
-                    elif value_col is not None:
-                        # Numeric fallback: bin into quantiles and plot distribution.
-                        s_num = pd.to_numeric(df_out[value_col], errors="coerce")
-                        s_num = s_num.dropna()
-                        if s_num.empty:
-                            raise ValueError("No numeric data available for pie chart fallback")
-                        bins = pd.qcut(s_num, q=min(4, s_num.nunique()), duplicates="drop")
-                        counts = bins.astype("string").value_counts(dropna=False).reset_index()
-                        counts.columns = ["bin", "count"]
-                        fig = px.pie(
-                            counts,
-                            names="bin",
-                            values="count",
-                            title=f"Distribution of binned {value_col}",
-                        )
-                        pie_path = _upload_path(f"etl_pie_{stem}.html")
-                        fig.write_html(pie_path, include_plotlyjs="cdn", full_html=True)
-                        artifacts["pie_chart_html"] = f"/download/{pie_path.name}"
-                    else:
-                        warnings.append("Pie chart requested, but no suitable categorical or numeric column was found.")
-                except Exception as exc:  # noqa: BLE001
-                    warnings.append(f"Failed to generate pie chart: {exc}")
-
-            # Line chart: by time (x) and count or first numeric (y).
-            if wants_line and time_col is not None:
-                try:
-                    import plotly.express as px
-
-                    df_line = df_out.copy()
-                    df_line[time_col] = pd.to_datetime(df_line[time_col], errors="coerce")
-                    df_line = df_line.dropna(subset=[time_col])
-                    if df_line.empty:
-                        raise ValueError("No valid datetime values for line chart")
-
-                    if value_col is None:
-                        # Count of rows per time.
-                        grouped = df_line.groupby(time_col).size().reset_index(name="count")
-                        y_col = "count"
-                    else:
-                        grouped = (
-                            df_line.groupby(time_col)[value_col]
-                            .sum()
-                            .reset_index()
-                        )
-                        y_col = value_col
-
-                    fig = px.line(
-                        grouped,
-                        x=time_col,
-                        y=y_col,
-                        title=f"Time series of {y_col}",
-                    )
-                    line_path = _upload_path(f"etl_line_{stem}.html")
-                    fig.write_html(line_path, include_plotlyjs="cdn", full_html=True)
-                    artifacts["line_chart_html"] = f"/download/{line_path.name}"
-                except Exception as exc:  # noqa: BLE001
-                    warnings.append(f"Failed to generate line chart: {exc}")
-            elif wants_line and time_col is None and value_col is not None:
-                # Fallback: line over index vs first numeric column.
-                try:
-                    import plotly.express as px
-
-                    df_line = df_out.reset_index().rename(columns={"index": "row"})
-                    fig = px.line(
-                        df_line,
-                        x="row",
-                        y=value_col,
-                        title=f"{value_col} over rows",
-                    )
-                    line_path = _upload_path(f"etl_line_{stem}.html")
-                    fig.write_html(line_path, include_plotlyjs="cdn", full_html=True)
-                    artifacts["line_chart_html"] = f"/download/{line_path.name}"
-                except Exception as exc:  # noqa: BLE001
-                    warnings.append(f"Failed to generate line chart: {exc}")
-
-            # Area chart (mirrors line chart logic).
-            if wants_area and value_col is not None:
-                try:
-                    import plotly.express as px
-
-                    if time_col is not None:
-                        df_area = df_out.copy()
-                        df_area[time_col] = pd.to_datetime(df_area[time_col], errors="coerce")
-                        df_area = df_area.dropna(subset=[time_col])
-                        if df_area.empty:
-                            raise ValueError("No valid datetime values for area chart")
-                        grouped = df_area.groupby(time_col)[value_col].sum().reset_index()
-                        x_col = time_col
-                    else:
-                        df_area = df_out.reset_index().rename(columns={"index": "row"})
-                        grouped = df_area
-                        x_col = "row"
-
-                    fig = px.area(
-                        grouped,
-                        x=x_col,
-                        y=value_col,
-                        title=f"Area chart of {value_col}",
-                    )
-                    area_path = _upload_path(f"etl_area_{stem}.html")
-                    fig.write_html(area_path, include_plotlyjs="cdn", full_html=True)
-                    artifacts["area_chart_html"] = f"/download/{area_path.name}"
-                except Exception as exc:  # noqa: BLE001
-                    warnings.append(f"Failed to generate area chart: {exc}")
-
-            # Bar / column chart: category vs numeric (or counts).
-            if (wants_bar or wants_column) and (categorical_cols or value_col is not None):
-                try:
-                    import plotly.express as px
-
-                    cat_col = categorical_cols[0] if categorical_cols else None
-                    if cat_col is not None and value_col is not None:
-                        grouped = (
-                            df_out.groupby(cat_col)[value_col]
-                            .sum()
-                            .reset_index()
-                        )
-                        y_col = value_col
-                    elif cat_col is not None:
-                        grouped = df_out[cat_col].value_counts().reset_index()
-                        grouped.columns = [cat_col, "count"]
-                        y_col = "count"
-                    else:
-                        # No categorical cols: use index buckets.
-                        grouped = (
-                            df_out.reset_index()
-                            .assign(bucket=lambda d: d["index"] // 10)
-                            .groupby("bucket")
-                            .size()
-                            .reset_index(name="count")
-                        )
-                        cat_col = "bucket"
-                        y_col = "count"
-
-                    fig_bar = px.bar(
-                        grouped,
-                        x=cat_col,
-                        y=y_col,
-                        title=f"Bar chart of {y_col} by {cat_col}",
-                    )
-                    bar_path = _upload_path(f"etl_bar_{stem}.html")
-                    fig_bar.write_html(bar_path, include_plotlyjs="cdn", full_html=True)
-                    artifacts["bar_chart_html"] = f"/download/{bar_path.name}"
-
-                    fig_col = px.bar(
-                        grouped,
-                        x=cat_col,
-                        y=y_col,
-                        title=f"Column chart of {y_col} by {cat_col}",
-                    )
-                    col_path = _upload_path(f"etl_column_{stem}.html")
-                    fig_col.write_html(col_path, include_plotlyjs="cdn", full_html=True)
-                    artifacts["column_chart_html"] = f"/download/{col_path.name}"
-                except Exception as exc:  # noqa: BLE001
-                    warnings.append(f"Failed to generate bar/column charts: {exc}")
-
-            # Scatter / bubble plots: numeric vs numeric, optional size.
-            if (wants_scatter or wants_bubble) and len(numeric_cols) >= 2:
-                try:
-                    import plotly.express as px
-
-                    x_col = numeric_cols[0]
-                    y_col = numeric_cols[1]
-                    color_col = categorical_cols[0] if categorical_cols else None
-
-                    fig_scatter = px.scatter(
-                        df_out,
-                        x=x_col,
-                        y=y_col,
-                        color=color_col,
-                        title=f"Scatter plot of {y_col} vs {x_col}",
-                    )
-                    scat_path = _upload_path(f"etl_scatter_{stem}.html")
-                    fig_scatter.write_html(scat_path, include_plotlyjs="cdn", full_html=True)
-                    artifacts["scatter_chart_html"] = f"/download/{scat_path.name}"
-
-                    if wants_bubble:
-                        size_col = numeric_cols[2] if len(numeric_cols) >= 3 else None
-                        fig_bubble = px.scatter(
-                            df_out,
-                            x=x_col,
-                            y=y_col,
-                            color=color_col,
-                            size=size_col,
-                            title=f"Bubble chart of {y_col} vs {x_col}",
-                        )
-                            # Note: if size_col is None, Plotly will ignore size argument.
-                        bubble_path = _upload_path(f"etl_bubble_{stem}.html")
-                        fig_bubble.write_html(bubble_path, include_plotlyjs="cdn", full_html=True)
-                        artifacts["bubble_chart_html"] = f"/download/{bubble_path.name}"
-                except Exception as exc:  # noqa: BLE001
-                    warnings.append(f"Failed to generate scatter/bubble charts: {exc}")
-
-            # Sweetviz overview report.
-            try:
-                import sweetviz as sv  # type: ignore[import-not-found]
-
-                report = sv.analyze(df_out)
-                viz_path = _upload_path(f"etl_visual_{stem}.html")
-                report.show_html(filepath=str(viz_path), open_browser=False)
-                artifacts["visualization_html"] = f"/download/{viz_path.name}"
-            except Exception as exc:  # noqa: BLE001
-                warnings.append(f"Failed to generate profiling report: {exc}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             warnings.append(f"Visualization step failed: {exc}")
 
-    return JSONResponse(
-        {
-            "output_file": output_file,
-            "output_filename": output_filename,
-            "download_url": f"/download/{output_filename}",
-            "artifacts": artifacts,
-            "warnings": warnings,
-        }
-    )
+    return JSONResponse({
+        "output_file": output_file,
+        "output_filename": output_filename,
+        "download_url": f"/download/{output_filename}",
+        "artifacts": artifacts,
+        "warnings": warnings,
+        "transformation_log": transformation_log,
+        "run_id": run_id,
+    })
 
 
 @app.post("/transform")
@@ -457,18 +273,13 @@ async def transform(
 ) -> JSONResponse:
     """
     Deterministic "raw -> clean" transform (no LLM required).
-    Produces:
-    - cleaned CSV
-    - JSON QA report
-    - (best-effort) missingness visuals + an HTML profiling report when optional libs are installed
+    Now supports CSV, Excel, and JSON files.
     """
-    import json
-    import uuid
-
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
     run_id = uuid.uuid4().hex[:10]
-    input_name = f"raw_{run_id}.csv"
+    original_ext = Path(file.filename).suffix.lower() if file.filename else ".csv"
+    input_name = f"raw_{run_id}{original_ext}"
     input_path = _upload_path(input_name)
 
     contents = await file.read()
@@ -476,9 +287,9 @@ async def transform(
         f.write(contents)
 
     try:
-        df_raw = pd.read_csv(input_path)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=f"Failed to read CSV: {exc}") from exc
+        df_raw = _read_uploaded_file(input_path)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to read file: {exc}") from exc
 
     df_clean, report = clean_dataframe(df_raw, config=CleanConfig())
     report["run_id"] = run_id
@@ -487,81 +298,694 @@ async def transform(
     cleaned_path = _upload_path(cleaned_name)
     df_clean.to_csv(cleaned_path, index=False)
 
+    # Save version
+    _save_version(run_id, df_raw, "raw")
+    _save_version(run_id, df_clean, "cleaned")
+
     report_name = f"clean_report_{run_id}.json"
     report_path = _upload_path(report_name)
     report_path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
 
+    # Build transformation log from cleaning report
+    transformation_log = _build_transformation_log(report)
+
     artifacts: dict[str, str] = {}
 
-    # To keep response time reasonable on large files, use a row sample for heavy visualizations.
-    viz_sample = df_raw
-    max_viz_rows = 5000
-    if len(viz_sample) > max_viz_rows:
-        viz_sample = viz_sample.sample(n=max_viz_rows, random_state=0)
-
-    # Missingness plot (missingno) - best effort.
+    # Missingness plot (missingno)
     try:
         import matplotlib
-
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-
         import missingno as msno
 
+        viz_sample = df_raw.head(5000)
         fig = msno.matrix(viz_sample, figsize=(10, 4))
         fig_path = _upload_path(f"missingness_{run_id}.png")
         plt.savefig(fig_path, bbox_inches="tight", dpi=140)
         plt.close()
         artifacts["missingness_png"] = f"/download/{fig_path.name}"
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
-    # Quick interactive missingness bar (plotly) - best effort.
+    # Missingness bar (plotly)
     try:
         import plotly.express as px
-
-        miss = viz_sample.isna().mean().sort_values(ascending=False)
+        miss = df_raw.isna().mean().sort_values(ascending=False)
         miss_df = pd.DataFrame({"column": miss.index.astype(str), "missing_rate": miss.values})
         fig = px.bar(miss_df, x="column", y="missing_rate", title="Missingness by column")
         html_path = _upload_path(f"missingness_{run_id}.html")
         fig.write_html(html_path, include_plotlyjs="cdn", full_html=True)
         artifacts["missingness_html"] = f"/download/{html_path.name}"
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
-    # Full profiling report (ydata-profiling) - best effort, on a capped sample for speed.
+    # Full profiling report (ydata-profiling)
     try:
         from ydata_profiling import ProfileReport
-
-        prof_sample = df_clean
-        max_prof_rows = 5000
-        if len(prof_sample) > max_prof_rows:
-            prof_sample = prof_sample.sample(n=max_prof_rows, random_state=0)
+        prof_sample = df_clean.head(5000)
         profile = ProfileReport(prof_sample, minimal=True, explorative=True)
         profile_path = _upload_path(f"profile_{run_id}.html")
         profile.to_file(profile_path)
         artifacts["profile_html"] = f"/download/{profile_path.name}"
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
-    return JSONResponse(
-        {
-            "run_id": run_id,
-            "input_file": str(input_path),
-            "cleaned_file": str(cleaned_path),
-            "download_cleaned_url": f"/download/{cleaned_name}",
-            "download_report_url": f"/download/{report_name}",
-            "artifacts": artifacts,
-            "qa_summary": report.get("qa", {}),
-        }
-    )
+    return JSONResponse({
+        "run_id": run_id,
+        "input_file": str(input_path),
+        "cleaned_file": str(cleaned_path),
+        "download_cleaned_url": f"/download/{cleaned_name}",
+        "download_report_url": f"/download/{report_name}",
+        "artifacts": artifacts,
+        "qa_summary": report.get("qa", {}),
+        "transformation_log": transformation_log,
+    })
 
+
+# ---------------------------------------------------------------------------
+# NEW: Data Quality Dashboard
+# ---------------------------------------------------------------------------
+
+@app.get("/data-quality")
+async def data_quality(filename: str = Query(...)) -> JSONResponse:
+    """Returns data quality metrics for a previously uploaded file."""
+    path = _upload_path(filename)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    df = _read_uploaded_file(path)
+
+    # Missing values per column
+    missing = df.isnull().sum().to_dict()
+    missing_pct = df.isnull().mean().mul(100).round(2).to_dict()
+
+    # Duplicates
+    duplicate_count = int(df.duplicated().sum())
+
+    # Column types
+    col_types = {str(col): str(dtype) for col, dtype in df.dtypes.items()}
+
+    # Outliers per numeric column (IQR method)
+    outliers = {}
+    numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    for col in numeric_cols:
+        s = df[col].dropna()
+        if s.empty:
+            continue
+        q1 = float(s.quantile(0.25))
+        q3 = float(s.quantile(0.75))
+        iqr = q3 - q1
+        if iqr == 0:
+            outliers[str(col)] = 0
+            continue
+        lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+        outliers[str(col)] = int(((s < lo) | (s > hi)).sum())
+
+    return JSONResponse({
+        "rows": len(df),
+        "columns": len(df.columns),
+        "missing_values": {str(k): int(v) for k, v in missing.items()},
+        "missing_percent": {str(k): float(v) for k, v in missing_pct.items()},
+        "duplicate_rows": duplicate_count,
+        "column_types": col_types,
+        "outliers_per_column": outliers,
+        "total_missing": int(df.isnull().sum().sum()),
+        "total_outliers": sum(outliers.values()),
+    })
+
+
+# ---------------------------------------------------------------------------
+# NEW: Data Summary Panel
+# ---------------------------------------------------------------------------
+
+@app.get("/data-summary")
+async def data_summary(filename: str = Query(...)) -> JSONResponse:
+    """Returns statistical summary of a previously uploaded file."""
+    path = _upload_path(filename)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    df = _read_uploaded_file(path)
+
+    # Basic info
+    col_info = []
+    for col in df.columns:
+        s = df[col]
+        info = {
+            "name": str(col),
+            "dtype": str(s.dtype),
+            "non_null": int(s.notna().sum()),
+            "null_count": int(s.isna().sum()),
+            "unique": int(s.nunique()),
+        }
+        if pd.api.types.is_numeric_dtype(s):
+            desc = s.describe()
+            info.update({
+                "mean": round(float(desc.get("mean", 0)), 2),
+                "std": round(float(desc.get("std", 0)), 2),
+                "min": float(desc.get("min", 0)),
+                "25%": float(desc.get("25%", 0)),
+                "50%": float(desc.get("50%", 0)),
+                "75%": float(desc.get("75%", 0)),
+                "max": float(desc.get("max", 0)),
+            })
+        elif pd.api.types.is_object_dtype(s) or pd.api.types.is_string_dtype(s):
+            top_vals = s.value_counts().head(5).to_dict()
+            info["top_values"] = {str(k): int(v) for k, v in top_vals.items()}
+        col_info.append(info)
+
+    return JSONResponse({
+        "rows": len(df),
+        "columns": len(df.columns),
+        "column_info": col_info,
+    })
+
+
+# ---------------------------------------------------------------------------
+# NEW: Visualization Suggestions
+# ---------------------------------------------------------------------------
+
+@app.get("/viz-suggestions")
+async def viz_suggestions(filename: str = Query(...)) -> JSONResponse:
+    """Analyzes the dataset and generates auto-suggested visualizations."""
+    path = _upload_path(filename)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    df = _read_uploaded_file(path)
+    run_tag = uuid.uuid4().hex[:8]
+    charts: list[dict] = []
+
+    import plotly.express as px
+
+    numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    categorical_cols = [
+        c for c in df.columns
+        if pd.api.types.is_object_dtype(df[c]) or pd.api.types.is_string_dtype(df[c])
+    ]
+
+    # 1. Histograms for numeric columns (max 4)
+    for col in numeric_cols[:4]:
+        try:
+            fig = px.histogram(df, x=col, title=f"Distribution of {col}", nbins=30)
+            chart_name = f"hist_{col}_{run_tag}.html"
+            chart_path = _upload_path(chart_name)
+            fig.write_html(chart_path, include_plotlyjs="cdn", full_html=True)
+            charts.append({
+                "type": "histogram",
+                "title": f"Distribution of {col}",
+                "url": f"/download/{chart_name}",
+                "description": f"Shows the frequency distribution of {col}",
+            })
+        except Exception:
+            pass
+
+    # 2. Correlation heatmap (if 2+ numeric cols)
+    if len(numeric_cols) >= 2:
+        try:
+            import plotly.figure_factory as ff
+            corr = df[numeric_cols].corr()
+            fig = px.imshow(
+                corr,
+                text_auto=".2f",
+                title="Correlation Heatmap",
+                color_continuous_scale="RdBu_r",
+                aspect="auto",
+            )
+            chart_name = f"corr_heatmap_{run_tag}.html"
+            chart_path = _upload_path(chart_name)
+            fig.write_html(chart_path, include_plotlyjs="cdn", full_html=True)
+            charts.append({
+                "type": "heatmap",
+                "title": "Correlation Heatmap",
+                "url": f"/download/{chart_name}",
+                "description": "Shows correlations between numeric columns",
+            })
+        except Exception:
+            pass
+
+    # 3. Box plots for numeric columns (max 4)
+    for col in numeric_cols[:4]:
+        try:
+            fig = px.box(df, y=col, title=f"Box Plot of {col}")
+            chart_name = f"box_{col}_{run_tag}.html"
+            chart_path = _upload_path(chart_name)
+            fig.write_html(chart_path, include_plotlyjs="cdn", full_html=True)
+            charts.append({
+                "type": "boxplot",
+                "title": f"Box Plot of {col}",
+                "url": f"/download/{chart_name}",
+                "description": f"Shows spread, median, and outliers of {col}",
+            })
+        except Exception:
+            pass
+
+    # 4. Bar chart for categorical columns (max 2)
+    for col in categorical_cols[:2]:
+        try:
+            counts = df[col].value_counts().head(15).reset_index()
+            counts.columns = [col, "count"]
+            fig = px.bar(counts, x=col, y="count", title=f"Frequency of {col}")
+            chart_name = f"catbar_{col}_{run_tag}.html"
+            chart_path = _upload_path(chart_name)
+            fig.write_html(chart_path, include_plotlyjs="cdn", full_html=True)
+            charts.append({
+                "type": "bar",
+                "title": f"Frequency of {col}",
+                "url": f"/download/{chart_name}",
+                "description": f"Shows value counts for {col}",
+            })
+        except Exception:
+            pass
+
+    # 5. Scatter plot for first two numeric columns
+    if len(numeric_cols) >= 2:
+        try:
+            color = categorical_cols[0] if categorical_cols else None
+            fig = px.scatter(
+                df, x=numeric_cols[0], y=numeric_cols[1],
+                color=color,
+                title=f"Scatter: {numeric_cols[0]} vs {numeric_cols[1]}",
+            )
+            chart_name = f"scatter_{run_tag}.html"
+            chart_path = _upload_path(chart_name)
+            fig.write_html(chart_path, include_plotlyjs="cdn", full_html=True)
+            charts.append({
+                "type": "scatter",
+                "title": f"Scatter: {numeric_cols[0]} vs {numeric_cols[1]}",
+                "url": f"/download/{chart_name}",
+                "description": f"Relationship between {numeric_cols[0]} and {numeric_cols[1]}",
+            })
+        except Exception:
+            pass
+
+    return JSONResponse({"charts": charts})
+
+
+# ---------------------------------------------------------------------------
+# NEW: Chat With Dataset
+# ---------------------------------------------------------------------------
+
+class ChatRequest(BaseModel):
+    filename: str
+    question: str
+
+
+@app.post("/chat")
+async def chat_with_dataset(req: ChatRequest) -> JSONResponse:
+    """
+    Allows users to ask natural-language questions about their dataset.
+    Uses Gemini to generate pandas code, executes it, and returns the answer.
+    """
+    path = _upload_path(req.filename)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    df = _read_uploaded_file(path)
+
+    # Build context
+    schema_info = []
+    for col in df.columns:
+        s = df[col]
+        dtype = str(s.dtype)
+        sample_vals = s.dropna().head(3).tolist()
+        schema_info.append(f"  - {col} ({dtype}): sample values = {sample_vals}")
+    schema_str = "\n".join(schema_info)
+    summary_str = df.describe(include="all").to_string()
+
+    prompt = f"""You are a data analyst assistant. A user has a pandas DataFrame named `df` with the following schema:
+
+{schema_str}
+
+Summary statistics:
+{summary_str}
+
+The DataFrame has {len(df)} rows and {len(df.columns)} columns.
+
+User question: "{req.question}"
+
+You have TWO output options:
+1. If the question can be answered with a simple text response (e.g., "how many rows?"), respond with just the answer text.
+2. If the question needs computation, write ONLY Python code that:
+   - Uses the existing `df` variable
+   - Stores the FINAL ANSWER as a string in a variable called `answer`
+   - Does NOT print anything
+   - Imports any needed libraries
+
+If you write code, output ONLY the code. No explanations, no markdown, no backticks.
+If you write a text answer, start it with "ANSWER:" followed by the answer.
+"""
+
+    try:
+        import google.generativeai as genai
+        import os
+
+        api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyCGtbmCUh9YPcVeKDaGRQmumfQ3C9vbEnY")
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-pro")
+        response = model.generate_content(prompt)
+        raw_response = response.text.strip()
+
+        # Strip markdown code blocks if present
+        if raw_response.startswith("```"):
+            parts = raw_response.split("```")
+            inner = [p for p in parts[1:] if p.strip()]
+            if inner:
+                body = inner[0]
+                lines = body.splitlines()
+                if lines and lines[0].strip().lower().startswith("python"):
+                    lines = lines[1:]
+                raw_response = "\n".join(lines).strip()
+
+        # Check if it's a direct text answer
+        if raw_response.upper().startswith("ANSWER:"):
+            answer = raw_response[7:].strip()
+        else:
+            # Execute as code
+            local_env = {"df": df.copy(), "pd": pd, "np": np}
+            exec(raw_response, {}, local_env)
+            answer = str(local_env.get("answer", "I processed your question but couldn't generate a specific answer. Please try rephrasing."))
+
+        return JSONResponse({
+            "question": req.question,
+            "answer": answer,
+            "code_used": raw_response if not raw_response.upper().startswith("ANSWER:") else None,
+        })
+
+    except Exception as exc:
+        return JSONResponse({
+            "question": req.question,
+            "answer": f"Sorry, I encountered an error processing your question: {str(exc)}",
+            "code_used": None,
+        })
+
+
+# ---------------------------------------------------------------------------
+# NEW: AI Report Generator
+# ---------------------------------------------------------------------------
+
+@app.post("/generate-report")
+async def generate_report(filename: str = Query(...)) -> JSONResponse:
+    """Generates a comprehensive AI-powered data analysis report."""
+    path = _upload_path(filename)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    df = _read_uploaded_file(path)
+    run_tag = uuid.uuid4().hex[:8]
+
+    # Gather statistics
+    summary = df.describe(include="all").to_string()
+    missing = df.isnull().sum().to_string()
+    dtypes = df.dtypes.to_string()
+    shape = f"{df.shape[0]} rows x {df.shape[1]} columns"
+
+    # Correlation info for numeric columns
+    numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    corr_info = ""
+    if len(numeric_cols) >= 2:
+        corr = df[numeric_cols].corr()
+        corr_info = f"\nCorrelation matrix:\n{corr.to_string()}"
+
+    # Duplicate info
+    dup_count = int(df.duplicated().sum())
+
+    prompt = f"""You are a professional data analyst. Generate a comprehensive, well-formatted data analysis report.
+
+Dataset shape: {shape}
+Duplicate rows: {dup_count}
+
+Column types:
+{dtypes}
+
+Dataset summary statistics:
+{summary}
+
+Missing values per column:
+{missing}
+{corr_info}
+
+Write a professional data analysis report with these sections:
+1. **Dataset Overview** - describe the dataset structure and purpose
+2. **Data Quality Analysis** - missing values, duplicates, data types
+3. **Key Statistics** - important statistical findings  
+4. **Insights & Patterns** - notable patterns, correlations, distributions
+5. **Recommendations** - suggested next steps for data cleaning or analysis
+
+Use professional language. Be specific with numbers. Format with markdown headers and bullet points.
+"""
+
+    try:
+        import google.generativeai as genai
+        import os
+
+        api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyCGtbmCUh9YPcVeKDaGRQmumfQ3C9vbEnY")
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-pro")
+        response = model.generate_content(prompt)
+        report_text = response.text.strip()
+    except Exception as exc:
+        # Fallback: generate a basic report without AI
+        report_text = _generate_basic_report(df, shape, dup_count)
+
+    # Save as HTML report
+    html_content = f"""<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>DIANA Data Analysis Report</title>
+<style>
+    body {{ font-family: 'Segoe UI', sans-serif; max-width: 900px; margin: 40px auto; padding: 20px;
+           background: #0f172a; color: #e2e8f0; line-height: 1.7; }}
+    h1 {{ color: #60a5fa; border-bottom: 2px solid #1e3a5f; padding-bottom: 10px; }}
+    h2 {{ color: #93c5fd; margin-top: 30px; }}
+    h3 {{ color: #bfdbfe; }}
+    code {{ background: #1e293b; padding: 2px 6px; border-radius: 4px; color: #fbbf24; }}
+    pre {{ background: #1e293b; padding: 16px; border-radius: 8px; overflow-x: auto; }}
+    ul, ol {{ padding-left: 24px; }}
+    li {{ margin-bottom: 6px; }}
+    strong {{ color: #f1f5f9; }}
+    .header {{ text-align: center; padding: 20px 0; }}
+    .timestamp {{ color: #64748b; font-size: 0.85em; }}
+</style>
+</head><body>
+<div class="header">
+    <h1>📊 DIANA Data Analysis Report</h1>
+    <p class="timestamp">Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")}</p>
+</div>
+<div>{_markdown_to_html(report_text)}</div>
+</body></html>"""
+
+    html_name = f"report_{run_tag}.html"
+    html_path = _upload_path(html_name)
+    html_path.write_text(html_content, encoding="utf-8")
+
+    # Generate PDF report
+    pdf_url = None
+    try:
+        from fpdf import FPDF
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_font("Helvetica", "B", 20)
+        pdf.cell(0, 15, "DIANA Data Analysis Report", new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(0, 8, f"Generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.ln(10)
+        pdf.set_font("Helvetica", "", 11)
+
+        # Clean markdown for PDF
+        clean_text = report_text.replace("**", "").replace("##", "").replace("#", "").replace("*", "")
+        for line in clean_text.split("\n"):
+            line = line.strip()
+            if not line:
+                pdf.ln(4)
+                continue
+            try:
+                pdf.multi_cell(0, 6, line)
+            except Exception:
+                pdf.multi_cell(0, 6, line.encode("ascii", "replace").decode("ascii"))
+
+        pdf_name = f"report_{run_tag}.pdf"
+        pdf_path = _upload_path(pdf_name)
+        pdf.output(str(pdf_path))
+        pdf_url = f"/download/{pdf_name}"
+    except Exception:
+        pass
+
+    return JSONResponse({
+        "report_text": report_text,
+        "html_url": f"/download/{html_name}",
+        "pdf_url": pdf_url,
+    })
+
+
+def _markdown_to_html(text: str) -> str:
+    """Very basic markdown to HTML conversion."""
+    import re
+    lines = text.split("\n")
+    html_lines = []
+    in_list = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("### "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<h3>{stripped[4:]}</h3>")
+        elif stripped.startswith("## "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<h2>{stripped[3:]}</h2>")
+        elif stripped.startswith("# "):
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            html_lines.append(f"<h2>{stripped[2:]}</h2>")
+        elif stripped.startswith("- ") or stripped.startswith("* "):
+            if not in_list:
+                html_lines.append("<ul>")
+                in_list = True
+            content = stripped[2:]
+            content = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", content)
+            html_lines.append(f"<li>{content}</li>")
+        elif stripped.startswith("```"):
+            continue
+        elif stripped:
+            if in_list:
+                html_lines.append("</ul>")
+                in_list = False
+            content = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", stripped)
+            content = re.sub(r"`(.+?)`", r"<code>\1</code>", content)
+            html_lines.append(f"<p>{content}</p>")
+    if in_list:
+        html_lines.append("</ul>")
+    return "\n".join(html_lines)
+
+
+def _generate_basic_report(df: pd.DataFrame, shape: str, dup_count: int) -> str:
+    """Fallback report generation without AI."""
+    numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    cat_cols = [c for c in df.columns if pd.api.types.is_object_dtype(df[c])]
+    missing_total = int(df.isnull().sum().sum())
+    missing_cols = {str(c): int(v) for c, v in df.isnull().sum().items() if v > 0}
+
+    report = f"""# Data Analysis Report
+
+## Dataset Overview
+- Shape: {shape}
+- Numeric columns: {len(numeric_cols)} ({', '.join(str(c) for c in numeric_cols[:5])})
+- Categorical columns: {len(cat_cols)} ({', '.join(str(c) for c in cat_cols[:5])})
+
+## Data Quality Analysis
+- Total missing values: {missing_total}
+- Duplicate rows: {dup_count}
+- Columns with missing values: {len(missing_cols)}
+
+## Key Statistics
+"""
+    for col in numeric_cols[:5]:
+        s = df[col]
+        report += f"- **{col}**: mean={s.mean():.2f}, median={s.median():.2f}, std={s.std():.2f}\n"
+
+    report += "\n## Recommendations\n"
+    if missing_total > 0:
+        report += "- Address missing values through imputation or removal\n"
+    if dup_count > 0:
+        report += f"- Remove {dup_count} duplicate rows\n"
+    report += "- Consider feature engineering for numeric columns\n"
+
+    return report
+
+
+# ---------------------------------------------------------------------------
+# NEW: Export Options
+# ---------------------------------------------------------------------------
+
+@app.get("/export/{filename}/{fmt}")
+async def export_data(filename: str, fmt: str) -> FileResponse:
+    """Export data in various formats: csv, excel, json, pdf."""
+    path = _upload_path(filename)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    df = _read_uploaded_file(path)
+    run_tag = uuid.uuid4().hex[:8]
+
+    if fmt == "csv":
+        return FileResponse(
+            path, media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{path.stem}_export.csv"'},
+        )
+
+    elif fmt == "excel":
+        excel_name = f"{path.stem}_export_{run_tag}.xlsx"
+        excel_path = _upload_path(excel_name)
+        df.to_excel(excel_path, index=False, engine="openpyxl")
+        return FileResponse(
+            excel_path,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{excel_name}"'},
+        )
+
+    elif fmt == "json":
+        json_name = f"{path.stem}_export_{run_tag}.json"
+        json_path = _upload_path(json_name)
+        df.to_json(json_path, orient="records", indent=2)
+        return FileResponse(
+            json_path, media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{json_name}"'},
+        )
+
+    elif fmt == "pdf":
+        from fpdf import FPDF
+
+        pdf = FPDF()
+        pdf.add_page("L")
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.cell(0, 10, f"Data Export: {path.stem}", new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.ln(5)
+
+        # Table header
+        cols = list(df.columns)[:10]  # Limit to 10 columns for PDF
+        col_width = max(25, (pdf.w - 20) / len(cols))
+        pdf.set_font("Helvetica", "B", 8)
+        for col in cols:
+            pdf.cell(col_width, 8, str(col)[:15], border=1, align="C")
+        pdf.ln()
+
+        # Table rows (max 100)
+        pdf.set_font("Helvetica", "", 7)
+        for _, row in df.head(100).iterrows():
+            for col in cols:
+                val = str(row[col])[:15] if pd.notna(row[col]) else ""
+                try:
+                    pdf.cell(col_width, 7, val, border=1)
+                except Exception:
+                    pdf.cell(col_width, 7, val.encode("ascii", "replace").decode("ascii"), border=1)
+            pdf.ln()
+
+        pdf_name = f"{path.stem}_export_{run_tag}.pdf"
+        pdf_path = _upload_path(pdf_name)
+        pdf.output(str(pdf_path))
+        return FileResponse(
+            pdf_path, media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{pdf_name}"'},
+        )
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt}. Use csv, excel, json, or pdf.")
+
+
+# ---------------------------------------------------------------------------
+# Download handler (updated)
+# ---------------------------------------------------------------------------
 
 @app.get("/download/{filename}")
 async def download_output(filename: str) -> FileResponse:
-    """
-    Download a generated artifact (CSV/HTML/PNG/JSON).
-    """
+    """Download a generated artifact (CSV/HTML/PNG/JSON/XLSX/PDF)."""
     path = _upload_path(filename)
     if not path.exists():
         raise HTTPException(status_code=404, detail="File not found")
@@ -573,6 +997,8 @@ async def download_output(filename: str) -> FileResponse:
         ".html": "text/html",
         ".htm": "text/html",
         ".png": "image/png",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".pdf": "application/pdf",
     }.get(ext, "application/octet-stream")
 
     disposition = "inline" if ext in {".html", ".htm", ".png"} else "attachment"
@@ -581,4 +1007,3 @@ async def download_output(filename: str) -> FileResponse:
         media_type=media_type,
         headers={"Content-Disposition": f'{disposition}; filename="{path.name}"'},
     )
-

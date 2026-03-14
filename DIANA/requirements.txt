@@ -15,3 +15,7 @@ altair
 ydata-profiling
 pyod
 google-generativeai
+fpdf2
+openpyxl
+xlsxwriter
+seaborn
