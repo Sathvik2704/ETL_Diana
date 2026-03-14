@@ -1,0 +1,21 @@
+id,name,email,age,gender,city,state,signup_date,last_login,subscription_status,purchase_amount
+1,John Doe,john.doe@email.com,28,Male,New York,NY,12-01-2023,01-06-2023,Active,120.5
+2,jane smith,JANE.SMITH@email.com,34,Female,los angeles,CA,18-02-2023,03-06-2023,active,89.99
+3,Bob Johnson,,45,Male,Chicago,IL,01-03-2023,,Inactive,0
+4,Alice Brown,alice.brown@email,29,Female,Houston,TX,01-04-2023,10-06-2023,Active,250
+5,Chris Lee,chris.lee@email.com,,Male,Phoenix,AZ,22-05-2023,15-06-2023,Cancelled,45
+6, Priya Kumar ,priya.k@email.com,26,FEMALE,Dallas,TX,11-02-2023,11-06-2023,Active,300.75
+7,Arjun Reddy,arjun@email.com,31,male,San Jose,CA,15-03-2023,16-06-2023,ACTIVE,199.99
+8,Sara Khan,sara.khan@email.com,27,Female,Seattle,WA,25-01-2023,12-06-2023,Inactive,
+9,David Miller,david.miller@email.com,52,Male,Boston,MA,05-04-2023,18-06-2023,Active,540
+10,Emily Davis,emily.davis@email.com,22,Female,Miami,FL,30-03-2023,19-06-2023,Active,75.5
+11,Michael Wilson,m.wilson@email.com,38,Male,Denver,CO,20-02-2023,08-06-2023,Cancelled,130
+12,Rahul Sharma,rahul.sharma@email.com,29,Male,Austin,TX,01-05-2023,20-06-2023,Active,410.1
+13,Neha Verma,neha.verma@email.com,33,Female,Atlanta,GA,12-03-2023,22-06-2023,active,220
+14,,no.name@email.com,41,Male,Portland,OR,14-04-2023,25-06-2023,Inactive,0
+15,Karan Patel,karan.patel@email.com,abc,Male,Las Vegas,NV,28-02-2023,13-06-2023,Active,310
+16,Lisa Wong,lisa.wong@email.com,36,Female,San Diego,CA,18-01-2023,14-06-2023,Active,150.45
+17,Tom Harris,tom.harris@email.com,48,Male,Detroit,MI,09-03-2023,09-06-2023,Inactive,0
+18,Ana Silva,ana.silva@email.com,30,Female,Orlando,FL,02-02-2023,07-06-2023,Cancelled,95
+19,Rohit Singh,rohit.s@email.com,27,Male,Columbus,OH,22-04-2023,21-06-2023,Active,185
+20,Meera Iyer,meera.iyer@email.com,29,Female,Charlotte,NC,10-05-2023,23-06-2023,Active,275.9

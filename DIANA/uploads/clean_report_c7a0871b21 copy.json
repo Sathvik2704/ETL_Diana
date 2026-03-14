@@ -1,0 +1,175 @@
+{
+  "steps": [
+    {
+      "drop_duplicates": {
+        "removed": 2
+      }
+    },
+    {
+      "normalize_strings": true
+    },
+    {
+      "infer_types": true
+    },
+    {
+      "drop_sparse_columns": {
+        "threshold": 0.85,
+        "dropped": []
+      }
+    },
+    {
+      "drop_sparse_rows": {
+        "threshold": 0.85,
+        "dropped": 0
+      }
+    },
+    {
+      "impute_categorical": {
+        "library": "sklearn",
+        "strategy": "most_frequent",
+        "cols": [
+          "EmpID",
+          "Department",
+          "Gender"
+        ]
+      }
+    },
+    {
+      "impute_numeric": {
+        "strategy": "iterative_imputer",
+        "cols": [
+          "ExperienceYears",
+          "Salary",
+          "PerformanceRating"
+        ]
+      }
+    },
+    {
+      "outliers": {
+        "clipped_columns": [],
+        "clip_iqr_k": 3.0
+      }
+    }
+  ],
+  "notes": [
+    "Feature-engine categorical imputer failed; falling back to sklearn SimpleImputer: The variable(s) EmpID contain(s) multiple frequent categories."
+  ],
+  "raw_shape": [
+    48,
+    6
+  ],
+  "dtypes": {
+    "datetime": [],
+    "numeric": [
+      "ExperienceYears",
+      "Salary",
+      "PerformanceRating"
+    ],
+    "categorical": [
+      "EmpID",
+      "Department",
+      "Gender"
+    ]
+  },
+  "diff_summary": {
+    "EmpID": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 42,
+      "clean_unique": 42,
+      "raw_top_values": {
+        "E35": 2,
+        "E24": 2,
+        "E3": 1
+      },
+      "clean_top_values": {
+        "E10": 5,
+        "E35": 1,
+        "E24": 1
+      }
+    },
+    "Department": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 5,
+      "clean_unique": 5,
+      "raw_top_values": {
+        "Finance": 12,
+        "HR": 11,
+        "Marketing": 10
+      },
+      "clean_top_values": {
+        "Finance": 15,
+        "HR": 11,
+        "Marketing": 9
+      }
+    },
+    "Gender": {
+      "raw_non_null": 45,
+      "clean_non_null": 46,
+      "raw_missing": 3,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 3,
+      "clean_unique": 3,
+      "raw_top_values": {
+        "Male": 17,
+        "Female": 16,
+        "Other": 12
+      },
+      "clean_top_values": {
+        "Female": 19,
+        "Male": 15,
+        "Other": 12
+      }
+    },
+    "ExperienceYears": {
+      "raw_non_null": 43,
+      "clean_non_null": 46,
+      "raw_missing": 5,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 0.0,
+      "raw_max": 20.0,
+      "clean_min": 0.0,
+      "clean_max": 20.0
+    },
+    "Salary": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 239873.0,
+      "raw_max": 1986765.0,
+      "clean_min": 239873.0,
+      "clean_max": 1986765.0
+    },
+    "PerformanceRating": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 1.0,
+      "raw_max": 5.0,
+      "clean_min": 1.0,
+      "clean_max": 5.0
+    }
+  },
+  "clean_shape": [
+    46,
+    6
+  ],
+  "qa": {
+    "missing_values_total": 0,
+    "duplicate_rows_total": 0
+  },
+  "run_id": "c7a0871b21"
+}

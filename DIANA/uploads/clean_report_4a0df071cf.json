@@ -1,0 +1,427 @@
+{
+  "steps": [
+    {
+      "drop_duplicates": {
+        "removed": 0
+      }
+    },
+    {
+      "normalize_strings": true
+    },
+    {
+      "infer_types": true
+    },
+    {
+      "drop_sparse_columns": {
+        "threshold": 0.85,
+        "dropped": []
+      }
+    },
+    {
+      "drop_sparse_rows": {
+        "threshold": 0.85,
+        "dropped": 0
+      }
+    },
+    {
+      "impute_datetime": {
+        "strategy": "ffill_bfill",
+        "cols": [
+          "Transaction Date"
+        ]
+      }
+    },
+    {
+      "impute_categorical": {
+        "library": "sklearn",
+        "strategy": "most_frequent",
+        "cols": [
+          "Transaction ID",
+          "Item",
+          "Payment Method",
+          "Location"
+        ]
+      }
+    },
+    {
+      "impute_numeric": {
+        "strategy": "iterative_imputer",
+        "cols": [
+          "Quantity",
+          "Price Per Unit",
+          "Total Spent"
+        ]
+      }
+    },
+    {
+      "outlier_detection": {
+        "library": "pyod",
+        "model": "IForest",
+        "contamination": 0.05,
+        "n_outliers": 498,
+        "outlier_row_indices": [
+          10,
+          20,
+          51,
+          52,
+          96,
+          100,
+          147,
+          150,
+          157,
+          177,
+          212,
+          214,
+          236,
+          239,
+          313,
+          330,
+          340,
+          532,
+          536,
+          545,
+          546,
+          557,
+          570,
+          595,
+          612,
+          625,
+          648,
+          659,
+          661,
+          693,
+          720,
+          737,
+          744,
+          755,
+          765,
+          768,
+          775,
+          777,
+          782,
+          848,
+          853,
+          874,
+          884,
+          885,
+          890,
+          904,
+          911,
+          912,
+          914,
+          953,
+          978,
+          991,
+          1000,
+          1012,
+          1055,
+          1071,
+          1107,
+          1113,
+          1138,
+          1148,
+          1155,
+          1165,
+          1178,
+          1199,
+          1222,
+          1263,
+          1315,
+          1330,
+          1337,
+          1342,
+          1384,
+          1393,
+          1425,
+          1431,
+          1447,
+          1451,
+          1458,
+          1465,
+          1479,
+          1487,
+          1492,
+          1527,
+          1533,
+          1542,
+          1550,
+          1562,
+          1563,
+          1603,
+          1621,
+          1622,
+          1633,
+          1660,
+          1706,
+          1734,
+          1757,
+          1766,
+          1788,
+          1799,
+          1814,
+          1843,
+          1845,
+          1857,
+          1926,
+          1939,
+          1947,
+          1986,
+          1999,
+          2008,
+          2009,
+          2017,
+          2043,
+          2049,
+          2078,
+          2091,
+          2132,
+          2149,
+          2160,
+          2164,
+          2167,
+          2189,
+          2191,
+          2198,
+          2205,
+          2224,
+          2235,
+          2250,
+          2265,
+          2283,
+          2296,
+          2308,
+          2313,
+          2315,
+          2344,
+          2372,
+          2399,
+          2430,
+          2436,
+          2444,
+          2480,
+          2483,
+          2488,
+          2494,
+          2502,
+          2512,
+          2515,
+          2532,
+          2564,
+          2578,
+          2593,
+          2632,
+          2666,
+          2691,
+          2720,
+          2727,
+          2739,
+          2752,
+          2860,
+          2878,
+          2892,
+          2949,
+          2959,
+          2986,
+          2994,
+          3006,
+          3040,
+          3049,
+          3089,
+          3102,
+          3129,
+          3142,
+          3144,
+          3180,
+          3183,
+          3219,
+          3267,
+          3272,
+          3280,
+          3317,
+          3324,
+          3372,
+          3414,
+          3416,
+          3431,
+          3440,
+          3477,
+          3517,
+          3566,
+          3573,
+          3574,
+          3581,
+          3589,
+          3607,
+          3616,
+          3634,
+          3674,
+          3686,
+          3702,
+          3722,
+          3723,
+          3727
+        ]
+      }
+    },
+    {
+      "outliers": {
+        "clipped_columns": [],
+        "clip_iqr_k": 3.0
+      }
+    }
+  ],
+  "notes": [
+    "Feature-engine categorical imputer failed; falling back to sklearn SimpleImputer: The variable(s) Transaction ID contain(s) multiple frequent categories."
+  ],
+  "raw_shape": [
+    10000,
+    8
+  ],
+  "dtypes": {
+    "datetime": [
+      "Transaction Date"
+    ],
+    "numeric": [
+      "Quantity",
+      "Price Per Unit",
+      "Total Spent"
+    ],
+    "categorical": [
+      "Transaction ID",
+      "Item",
+      "Payment Method",
+      "Location"
+    ]
+  },
+  "diff_summary": {
+    "Transaction ID": {
+      "raw_non_null": 10000,
+      "clean_non_null": 10000,
+      "raw_missing": 0,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 10000,
+      "clean_unique": 10000,
+      "raw_top_values": {
+        "TXN_9226047": 1,
+        "TXN_8567525": 1,
+        "TXN_4583012": 1
+      },
+      "clean_top_values": {
+        "TXN_9226047": 1,
+        "TXN_8567525": 1,
+        "TXN_4583012": 1
+      }
+    },
+    "Item": {
+      "raw_non_null": 9667,
+      "clean_non_null": 10000,
+      "raw_missing": 333,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 10,
+      "clean_unique": 10,
+      "raw_top_values": {
+        "Juice": 1171,
+        "Coffee": 1165,
+        "Salad": 1148
+      },
+      "clean_top_values": {
+        "Juice": 1504,
+        "Coffee": 1165,
+        "Salad": 1148
+      }
+    },
+    "Quantity": {
+      "raw_non_null": 9862,
+      "clean_non_null": 10000,
+      "raw_missing": 138,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 1.0,
+      "raw_max": 5.0,
+      "clean_min": 0.08874140423570287,
+      "clean_max": 5.866199473199043
+    },
+    "Price Per Unit": {
+      "raw_non_null": 9821,
+      "clean_non_null": 10000,
+      "raw_missing": 179,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 1.0,
+      "raw_max": 5.0,
+      "clean_min": 0.23871864513620578,
+      "clean_max": 5.761367964942366
+    },
+    "Total Spent": {
+      "raw_non_null": 9827,
+      "clean_non_null": 10000,
+      "raw_missing": 173,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 1.0,
+      "raw_max": 25.0,
+      "clean_min": -3.034810708771113,
+      "clean_max": 25.0
+    },
+    "Payment Method": {
+      "raw_non_null": 7421,
+      "clean_non_null": 10000,
+      "raw_missing": 2579,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 5,
+      "clean_unique": 5,
+      "raw_top_values": {
+        "Digital Wallet": 2291,
+        "Credit Card": 2273,
+        "Cash": 2258
+      },
+      "clean_top_values": {
+        "Digital Wallet": 4870,
+        "Credit Card": 2273,
+        "Cash": 2258
+      }
+    },
+    "Location": {
+      "raw_non_null": 6735,
+      "clean_non_null": 10000,
+      "raw_missing": 3265,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 4,
+      "clean_unique": 4,
+      "raw_top_values": {
+        "Takeaway": 3022,
+        "In-store": 3017,
+        "ERROR": 358
+      },
+      "clean_top_values": {
+        "Takeaway": 6287,
+        "In-store": 3017,
+        "ERROR": 358
+      }
+    },
+    "Transaction Date": {
+      "raw_non_null": 9841,
+      "clean_non_null": 10000,
+      "raw_missing": 159,
+      "clean_missing": 0,
+      "kind": "datetime",
+      "raw_min": "2023-01-01 00:00:00",
+      "raw_max": "2023-12-31 00:00:00",
+      "clean_min": "2023-01-01 00:00:00",
+      "clean_max": "2023-12-31 00:00:00"
+    }
+  },
+  "clean_shape": [
+    10000,
+    8
+  ],
+  "qa": {
+    "missing_values_total": 0,
+    "duplicate_rows_total": 0
+  },
+  "run_id": "4a0df071cf"
+}

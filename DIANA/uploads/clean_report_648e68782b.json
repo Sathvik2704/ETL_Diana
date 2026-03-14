@@ -1,0 +1,198 @@
+{
+  "steps": [
+    {
+      "drop_duplicates": {
+        "removed": 0
+      }
+    },
+    {
+      "normalize_strings": true
+    },
+    {
+      "infer_types": true
+    },
+    {
+      "drop_sparse_columns": {
+        "threshold": 0.85,
+        "dropped": []
+      }
+    },
+    {
+      "drop_sparse_rows": {
+        "threshold": 0.85,
+        "dropped": 0
+      }
+    },
+    {
+      "impute_categorical": {
+        "library": "feature_engine",
+        "strategy": "frequent",
+        "cols": [
+          "Status",
+          "Error/Success Message"
+        ]
+      }
+    },
+    {
+      "impute_numeric": {
+        "library": "feature_engine",
+        "strategy": "per_column_mean_or_median",
+        "per_column": {
+          "WhatsApp Number": "mean",
+          "Status Code": "mean"
+        }
+      }
+    },
+    {
+      "outlier_detection": {
+        "library": "pyod",
+        "model": "IForest",
+        "contamination": 0.05,
+        "n_outliers": 50,
+        "outlier_row_indices": [
+          48,
+          49,
+          50,
+          275,
+          283,
+          284,
+          285,
+          287,
+          290,
+          291,
+          388,
+          390,
+          391,
+          393,
+          394,
+          395,
+          396,
+          397,
+          398,
+          399,
+          400,
+          402,
+          403,
+          404,
+          406,
+          407,
+          408,
+          413,
+          422,
+          427,
+          790,
+          795,
+          801,
+          802,
+          805,
+          807,
+          893,
+          894,
+          895,
+          898,
+          899,
+          900,
+          901,
+          902,
+          903,
+          904,
+          906,
+          908,
+          920,
+          988
+        ]
+      }
+    },
+    {
+      "outliers": {
+        "clipped_columns": [],
+        "clip_iqr_k": 3.0
+      }
+    }
+  ],
+  "notes": [],
+  "raw_shape": [
+    990,
+    4
+  ],
+  "dtypes": {
+    "datetime": [],
+    "numeric": [
+      "WhatsApp Number",
+      "Status Code"
+    ],
+    "categorical": [
+      "Status",
+      "Error/Success Message"
+    ]
+  },
+  "diff_summary": {
+    "WhatsApp Number": {
+      "raw_non_null": 990,
+      "clean_non_null": 990,
+      "raw_missing": 0,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 919848326113.0,
+      "raw_max": 919908893766.0,
+      "clean_min": 919848326113.0,
+      "clean_max": 919908893766.0
+    },
+    "Status": {
+      "raw_non_null": 990,
+      "clean_non_null": 990,
+      "raw_missing": 0,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 4,
+      "clean_unique": 4,
+      "raw_top_values": {
+        "READ": 488,
+        "FAILED": 437,
+        "DELIVERED": 62
+      },
+      "clean_top_values": {
+        "READ": 488,
+        "FAILED": 437,
+        "DELIVERED": 62
+      }
+    },
+    "Status Code": {
+      "raw_non_null": 990,
+      "clean_non_null": 990,
+      "raw_missing": 0,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 202.0,
+      "raw_max": 400.0,
+      "clean_min": 202.0,
+      "clean_max": 400.0
+    },
+    "Error/Success Message": {
+      "raw_non_null": 990,
+      "clean_non_null": 990,
+      "raw_missing": 0,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 2,
+      "clean_unique": 2,
+      "raw_top_values": {
+        "Message Sent Successfully": 553,
+        "Failed to Send": 437
+      },
+      "clean_top_values": {
+        "Message Sent Successfully": 553,
+        "Failed to Send": 437
+      }
+    }
+  },
+  "clean_shape": [
+    990,
+    4
+  ],
+  "qa": {
+    "missing_values_total": 0,
+    "duplicate_rows_total": 0
+  },
+  "run_id": "648e68782b"
+}

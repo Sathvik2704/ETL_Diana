@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+pandas
+numpy
+requests
+python-multipart
+pytest
+scikit-learn
+feature-engine
+pyjanitor
+missingno
+matplotlib
+plotly
+altair
+ydata-profiling
+pyod
+google-generativeai

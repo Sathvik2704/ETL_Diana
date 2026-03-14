@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>DIANA – Minimal ETL Prototype</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 720px;
+            margin: 40px auto;
+            line-height: 1.5;
+        }
+        h1 {
+            margin-bottom: 0.25rem;
+        }
+        .subtitle {
+            color: #555;
+            margin-bottom: 1.5rem;
+        }
+        form {
+            padding: 1rem;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.75rem;
+        }
+        input[type="text"],
+        input[type="file"] {
+            width: 100%;
+            padding: 0.5rem;
+            box-sizing: border-box;
+        }
+        button {
+            margin-top: 0.5rem;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+        }
+        #result {
+            margin-top: 1.5rem;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .actions {
+            margin-top: 0.75rem;
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .actions a {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border: 1px solid #333;
+            border-radius: 6px;
+            text-decoration: none;
+            color: #111;
+            background: #f6f6f6;
+            font-family: Arial, sans-serif;
+        }
+        .actions a:hover {
+            background: #eee;
+        }
+    </style>
+</head>
+<body>
+    <h1>DIANA – Minimal ETL Prototype</h1>
+    <div class="subtitle">
+        Upload a CSV, describe your goal in natural language, and let the LLM generate and run the ETL code.
+    </div>
+
+    <form id="etl-form">
+        <label>
+            CSV File:
+            <input type="file" name="file" accept=".csv" required />
+        </label>
+        <label>
+            Goal:
+            <input type="text" name="goal" placeholder="e.g. remove missing values, drop duplicates" required />
+        </label>
+        <button type="submit">Run ETL</button>
+    </form>
+
+    <div style="height: 18px;"></div>
+
+    <div class="subtitle" style="margin-top: 0;">
+        Or, if you just know your data is raw, use the deterministic cleaner (no LLM).
+    </div>
+
+    <form id="transform-form">
+        <label>
+            CSV File:
+            <input type="file" name="file" accept=".csv" required />
+        </label>
+        <button type="submit">Transform Raw Data</button>
+    </form>
+
+    <div id="result"></div>
+
+    <script>
+        const etlForm = document.getElementById("etl-form");
+        const transformForm = document.getElementById("transform-form");
+        const resultEl = document.getElementById("result");
+
+        function renderLinks(data) {
+            const links = [];
+            if (data.download_url) {
+                links.push(`<a href="${data.download_url}">Download output</a>`);
+            }
+            if (data.download_cleaned_url) {
+                links.push(`<a href="${data.download_cleaned_url}">Download cleaned CSV</a>`);
+            }
+            if (data.download_report_url) {
+                links.push(`<a href="${data.download_report_url}">Download QA report (JSON)</a>`);
+            }
+            if (data.artifacts) {
+                for (const [k, v] of Object.entries(data.artifacts)) {
+                    links.push(`<a href="${v}">Open ${k}</a>`);
+                }
+            }
+            if (!links.length) return "";
+            return `<div class="actions">${links.join("")}</div>`;
+        }
+
+        async function postForm(endpoint, formEl, runningText) {
+            resultEl.textContent = runningText;
+            const formData = new FormData(formEl);
+
+            try {
+                const res = await fetch(endpoint, { method: "POST", body: formData });
+                const data = await res.json();
+                if (!res.ok) {
+                    resultEl.textContent = JSON.stringify(data, null, 2);
+                    return;
+                }
+
+                resultEl.innerHTML = `
+<div><strong>Done.</strong></div>
+${renderLinks(data)}
+<pre style="margin-top:0.75rem;">${JSON.stringify(data, null, 2)}</pre>
+                `.trim();
+            } catch (err) {
+                resultEl.textContent = "Error: " + err;
+            }
+        }
+
+        etlForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            await postForm("/process", etlForm, "Running ETL (LLM)...");
+        });
+
+        transformForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            await postForm("/transform", transformForm, "Transforming (auto-clean)...");
+        });
+    </script>
+</body>
+</html>
+

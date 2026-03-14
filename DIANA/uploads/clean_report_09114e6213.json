@@ -1,0 +1,280 @@
+{
+  "steps": [
+    {
+      "drop_duplicates": {
+        "removed": 0
+      }
+    },
+    {
+      "normalize_strings": true
+    },
+    {
+      "infer_types": true
+    },
+    {
+      "drop_sparse_columns": {
+        "threshold": 0.85,
+        "dropped": []
+      }
+    },
+    {
+      "drop_sparse_rows": {
+        "threshold": 0.85,
+        "dropped": 0
+      }
+    },
+    {
+      "impute_categorical": {
+        "library": "sklearn",
+        "strategy": "most_frequent",
+        "cols": [
+          "name",
+          "email",
+          "gender",
+          "city",
+          "state",
+          "signup_date",
+          "last_login",
+          "subscription_status"
+        ]
+      }
+    },
+    {
+      "impute_numeric": {
+        "strategy": "iterative_imputer",
+        "cols": [
+          "id",
+          "age",
+          "purchase_amount"
+        ]
+      }
+    },
+    {
+      "outliers": {
+        "clipped_columns": [],
+        "clip_iqr_k": 3.0
+      }
+    }
+  ],
+  "notes": [
+    "Feature-engine categorical imputer failed; falling back to sklearn SimpleImputer: The variable(s) city, signup_date contain(s) multiple frequent categories."
+  ],
+  "raw_shape": [
+    20,
+    11
+  ],
+  "dtypes": {
+    "datetime": [],
+    "numeric": [
+      "id",
+      "age",
+      "purchase_amount"
+    ],
+    "categorical": [
+      "name",
+      "email",
+      "gender",
+      "city",
+      "state",
+      "signup_date",
+      "last_login",
+      "subscription_status"
+    ]
+  },
+  "diff_summary": {
+    "id": {
+      "raw_non_null": 20,
+      "clean_non_null": 20,
+      "raw_missing": 0,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 1.0,
+      "raw_max": 20.0,
+      "clean_min": 1.0,
+      "clean_max": 20.0
+    },
+    "name": {
+      "raw_non_null": 19,
+      "clean_non_null": 20,
+      "raw_missing": 1,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 19,
+      "clean_unique": 19,
+      "raw_top_values": {
+        "John Doe": 1,
+        "jane smith": 1,
+        "Bob Johnson": 1
+      },
+      "clean_top_values": {
+        "Alice Brown": 2,
+        "jane smith": 1,
+        "John Doe": 1
+      }
+    },
+    "email": {
+      "raw_non_null": 19,
+      "clean_non_null": 20,
+      "raw_missing": 1,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 19,
+      "clean_unique": 19,
+      "raw_top_values": {
+        "john.doe@email.com": 1,
+        "JANE.SMITH@email.com": 1,
+        "alice.brown@email": 1
+      },
+      "clean_top_values": {
+        "alice.brown@email": 2,
+        "john.doe@email.com": 1,
+        "jane.smith@email.com": 1
+      }
+    },
+    "age": {
+      "raw_non_null": 19,
+      "clean_non_null": 20,
+      "raw_missing": 1,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 22.0,
+      "raw_max": 52.0,
+      "clean_min": 22.0,
+      "clean_max": 52.0
+    },
+    "gender": {
+      "raw_non_null": 20,
+      "clean_non_null": 20,
+      "raw_missing": 0,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 4,
+      "clean_unique": 4,
+      "raw_top_values": {
+        "Male": 10,
+        "Female": 8,
+        "FEMALE": 1
+      },
+      "clean_top_values": {
+        "Male": 10,
+        "Female": 8,
+        "FEMALE": 1
+      }
+    },
+    "city": {
+      "raw_non_null": 20,
+      "clean_non_null": 20,
+      "raw_missing": 0,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 20,
+      "clean_unique": 20,
+      "raw_top_values": {
+        "New York": 1,
+        "los angeles": 1,
+        "Chicago": 1
+      },
+      "clean_top_values": {
+        "New York": 1,
+        "los angeles": 1,
+        "Chicago": 1
+      }
+    },
+    "state": {
+      "raw_non_null": 20,
+      "clean_non_null": 20,
+      "raw_missing": 0,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 15,
+      "clean_unique": 15,
+      "raw_top_values": {
+        "CA": 3,
+        "TX": 3,
+        "FL": 2
+      },
+      "clean_top_values": {
+        "CA": 3,
+        "TX": 3,
+        "FL": 2
+      }
+    },
+    "signup_date": {
+      "raw_non_null": 20,
+      "clean_non_null": 20,
+      "raw_missing": 0,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 20,
+      "clean_unique": 20,
+      "raw_top_values": {
+        "12-01-2023": 1,
+        "18-02-2023": 1,
+        "01-03-2023": 1
+      },
+      "clean_top_values": {
+        "12-01-2023": 1,
+        "18-02-2023": 1,
+        "01-03-2023": 1
+      }
+    },
+    "last_login": {
+      "raw_non_null": 19,
+      "clean_non_null": 20,
+      "raw_missing": 1,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 19,
+      "clean_unique": 19,
+      "raw_top_values": {
+        "01-06-2023": 1,
+        "03-06-2023": 1,
+        "10-06-2023": 1
+      },
+      "clean_top_values": {
+        "01-06-2023": 2,
+        "03-06-2023": 1,
+        "10-06-2023": 1
+      }
+    },
+    "subscription_status": {
+      "raw_non_null": 20,
+      "clean_non_null": 20,
+      "raw_missing": 0,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 5,
+      "clean_unique": 5,
+      "raw_top_values": {
+        "Active": 10,
+        "Inactive": 4,
+        "Cancelled": 3
+      },
+      "clean_top_values": {
+        "Active": 10,
+        "Inactive": 4,
+        "Cancelled": 3
+      }
+    },
+    "purchase_amount": {
+      "raw_non_null": 19,
+      "clean_non_null": 20,
+      "raw_missing": 1,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 0.0,
+      "raw_max": 540.0,
+      "clean_min": 0.0,
+      "clean_max": 540.0
+    }
+  },
+  "clean_shape": [
+    20,
+    11
+  ],
+  "qa": {
+    "missing_values_total": 0,
+    "duplicate_rows_total": 0
+  },
+  "run_id": "09114e6213"
+}
