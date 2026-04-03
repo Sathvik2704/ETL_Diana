@@ -1,0 +1,186 @@
+{
+  "steps": [
+    {
+      "drop_duplicates": {
+        "removed": 2
+      }
+    },
+    {
+      "normalize_strings": true
+    },
+    {
+      "infer_types": true
+    },
+    {
+      "drop_sparse_columns": {
+        "threshold": 0.85,
+        "dropped": []
+      }
+    },
+    {
+      "drop_sparse_rows": {
+        "threshold": 0.85,
+        "dropped": 0
+      }
+    },
+    {
+      "impute_categorical": {
+        "library": "sklearn",
+        "strategy": "most_frequent",
+        "cols": [
+          "StudentID",
+          "Name",
+          "Class"
+        ]
+      }
+    },
+    {
+      "impute_numeric": {
+        "strategy": "iterative_imputer",
+        "cols": [
+          "Math",
+          "Science",
+          "English",
+          "AttendancePercent"
+        ]
+      }
+    },
+    {
+      "outliers": {
+        "clipped_columns": [],
+        "clip_iqr_k": 3.0
+      }
+    }
+  ],
+  "notes": [],
+  "raw_shape": [
+    48,
+    7
+  ],
+  "dtypes": {
+    "datetime": [],
+    "numeric": [
+      "Math",
+      "Science",
+      "English",
+      "AttendancePercent"
+    ],
+    "categorical": [
+      "StudentID",
+      "Name",
+      "Class"
+    ]
+  },
+  "diff_summary": {
+    "StudentID": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 42,
+      "clean_unique": 42,
+      "raw_top_values": {
+        "S22": 2,
+        "S27": 2,
+        "S3": 1
+      },
+      "clean_top_values": {
+        "S10": 5,
+        "S22": 1,
+        "S27": 1
+      }
+    },
+    "Name": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 42,
+      "clean_unique": 42,
+      "raw_top_values": {
+        "Ashley Reyes": 2,
+        "Patricia Aguilar": 2,
+        "Jeffrey Greer": 1
+      },
+      "clean_top_values": {
+        "Ana Brown": 5,
+        "Ashley Reyes": 1,
+        "Patricia Aguilar": 1
+      }
+    },
+    "Class": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 3,
+      "clean_unique": 3,
+      "raw_top_values": {
+        "10B": 19,
+        "10A": 15,
+        "10C": 10
+      },
+      "clean_top_values": {
+        "10B": 22,
+        "10A": 14,
+        "10C": 10
+      }
+    },
+    "Math": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 3.0,
+      "raw_max": 119.0,
+      "clean_min": 3.0,
+      "clean_max": 119.0
+    },
+    "Science": {
+      "raw_non_null": 45,
+      "clean_non_null": 46,
+      "raw_missing": 3,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 0.0,
+      "raw_max": 117.0,
+      "clean_min": 0.0,
+      "clean_max": 117.0
+    },
+    "English": {
+      "raw_non_null": 43,
+      "clean_non_null": 46,
+      "raw_missing": 5,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 7.0,
+      "raw_max": 119.0,
+      "clean_min": 7.0,
+      "clean_max": 119.0
+    },
+    "AttendancePercent": {
+      "raw_non_null": 43,
+      "clean_non_null": 46,
+      "raw_missing": 5,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 1.0,
+      "raw_max": 109.0,
+      "clean_min": 1.0,
+      "clean_max": 109.0
+    }
+  },
+  "clean_shape": [
+    46,
+    7
+  ],
+  "qa": {
+    "missing_values_total": 0,
+    "duplicate_rows_total": 0
+  },
+  "run_id": "75b9843437"
+}

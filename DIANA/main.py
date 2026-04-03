@@ -1,6 +1,9 @@
 from pathlib import Path
+import os
 import json
 import uuid
+import time
+import requests
 from datetime import datetime, timezone
 
 import numpy as np
@@ -225,13 +228,41 @@ async def process(
                     and not pd.api.types.is_datetime64_any_dtype(df_out[c])
                 ]
 
+                # Professional Styling Variables
+                chart_colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16']
+                import plotly.io as pio
+                pio.templates.default = "plotly_dark"
+
                 # Auto-generate a pie chart if categorical columns exist
                 if categorical_cols:
                     try:
                         pie_col = categorical_cols[0]
                         counts = df_out[pie_col].value_counts().reset_index()
                         counts.columns = [pie_col, "count"]
-                        fig = px.pie(counts, names=pie_col, values="count", title=f"Distribution of {pie_col}")
+                        
+                        # Fix for high-cardinality overlapping text: limit to top 7
+                        if len(counts) > 7:
+                            top = counts.head(7)
+                            others = pd.DataFrame({pie_col: ["Others"], "count": [counts["count"][7:].sum()]})
+                            counts = pd.concat([top, others], ignore_index=True)
+
+                        fig = px.pie(
+                            counts, names=pie_col, values="count", title=f"Distribution of {pie_col}",
+                            color_discrete_sequence=chart_colors, hole=0.5
+                        )
+                        fig.update_traces(
+                            textposition='inside', textinfo='percent', 
+                            hoverinfo='label+percent+value', 
+                            marker=dict(line=dict(color='rgba(0,0,0,0)', width=0))
+                        )
+                        fig.update_layout(
+                            title_font_family="Inter", title_font_size=20, 
+                            margin=dict(t=60, b=40, l=40, r=40),
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font_color="#e2e8f0"
+                        )
+                        
                         pie_path = _upload_path(f"etl_pie_{stem}.html")
                         fig.write_html(pie_path, include_plotlyjs="cdn", full_html=True)
                         artifacts["pie_chart_html"] = f"/download/{pie_path.name}"
@@ -244,7 +275,27 @@ async def process(
                         cat_col = categorical_cols[0]
                         val_col = numeric_cols[0]
                         grouped = df_out.groupby(cat_col)[val_col].sum().reset_index()
-                        fig = px.bar(grouped, x=cat_col, y=val_col, title=f"{val_col} by {cat_col}")
+                        # Sort and limit to avoid messy x-axis labels
+                        grouped = grouped.sort_values(by=val_col, ascending=False)
+                        if len(grouped) > 15:
+                            grouped = grouped.head(15)
+
+                        fig = px.bar(
+                            grouped, x=cat_col, y=val_col, title=f"{val_col} by {cat_col}",
+                            color=cat_col, color_discrete_sequence=chart_colors
+                        )
+                        fig.update_layout(
+                            title_font_family="Inter", title_font_size=20,
+                            xaxis_title=cat_col, yaxis_title=val_col,
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            margin=dict(t=60, b=40, l=40, r=40),
+                            showlegend=False,
+                            font_color="#e2e8f0"
+                        )
+                        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#334155', showline=False)
+                        fig.update_xaxes(showgrid=False, showline=False)
+                        
                         bar_path = _upload_path(f"etl_bar_{stem}.html")
                         fig.write_html(bar_path, include_plotlyjs="cdn", full_html=True)
                         artifacts["bar_chart_html"] = f"/download/{bar_path.name}"
@@ -503,7 +554,6 @@ async def viz_suggestions(filename: str = Query(...)) -> JSONResponse:
     # 2. Correlation heatmap (if 2+ numeric cols)
     if len(numeric_cols) >= 2:
         try:
-            import plotly.figure_factory as ff
             corr = df[numeric_cols].corr()
             fig = px.imshow(
                 corr,
@@ -583,6 +633,287 @@ async def viz_suggestions(filename: str = Query(...)) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# NEW: Dashboard Data (for Recharts frontend)
+# ---------------------------------------------------------------------------
+
+@app.get("/dashboard-data")
+async def dashboard_data(filename: str = Query(...)) -> JSONResponse:
+    """Returns structured chart data for native Recharts rendering on the frontend."""
+    path = _upload_path(filename)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    df = _read_uploaded_file(path)
+    charts: list[dict] = []
+
+    numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    categorical_cols = [
+        c for c in df.columns
+        if (pd.api.types.is_object_dtype(df[c]) or pd.api.types.is_string_dtype(df[c]))
+        and df[c].nunique() <= 50
+    ]
+    datetime_cols = [c for c in df.columns if pd.api.types.is_datetime64_any_dtype(df[c])]
+
+    # Also try to detect date-like text columns
+    for c in df.columns:
+        if c not in datetime_cols and pd.api.types.is_object_dtype(df[c]):
+            sample = df[c].dropna().head(20)
+            try:
+                parsed = pd.to_datetime(sample, errors="coerce")
+                if parsed.notna().sum() > len(sample) * 0.7:
+                    df[c] = pd.to_datetime(df[c], errors="coerce")
+                    datetime_cols.append(c)
+                    if c in categorical_cols:
+                        categorical_cols.remove(c)
+            except Exception:
+                pass
+
+    VIBRANT_COLORS = [
+        "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
+        "#06b6d4", "#ec4899", "#84cc16", "#f97316", "#6366f1",
+        "#14b8a6", "#e11d48", "#a855f7", "#eab308", "#22c55e",
+    ]
+
+    # ── 1. Time Series / Trend (Area Chart) ──
+    if datetime_cols and numeric_cols:
+        dt_col = datetime_cols[0]
+        val_col = numeric_cols[0]
+        try:
+            ts = df[[dt_col, val_col]].dropna().copy()
+            ts[dt_col] = pd.to_datetime(ts[dt_col], errors="coerce")
+            ts = ts.dropna()
+            ts = ts.sort_values(dt_col)
+            # Resample by month if enough data
+            ts.set_index(dt_col, inplace=True)
+            if len(ts) > 60:
+                grouped = ts.resample("M").sum().reset_index()
+            elif len(ts) > 14:
+                grouped = ts.resample("W").sum().reset_index()
+            else:
+                grouped = ts.reset_index()
+            grouped.columns = ["date", "value"]
+            grouped["date"] = grouped["date"].dt.strftime("%b %Y")
+            charts.append({
+                "id": "trend",
+                "type": "area",
+                "title": f"Trend: {val_col}",
+                "subtitle": f"{val_col} over time",
+                "data": grouped.to_dict(orient="records"),
+                "dataKey": "value",
+                "xKey": "date",
+                "color": "#3b82f6",
+                "gradientColor": "#3b82f6",
+            })
+        except Exception:
+            pass
+
+    # ── 2. Categorical distribution (Donut charts) ──
+    for i, col in enumerate(categorical_cols[:3]):
+        try:
+            counts = df[col].value_counts().head(10).reset_index()
+            counts.columns = ["name", "value"]
+            colors = VIBRANT_COLORS[:len(counts)]
+            data = []
+            for j, row in counts.iterrows():
+                data.append({
+                    "name": str(row["name"]),
+                    "value": int(row["value"]),
+                    "color": colors[j % len(colors)],
+                })
+            total = sum(d["value"] for d in data)
+            # Add percentages
+            for d in data:
+                d["percent"] = round(d["value"] / total * 100, 1) if total else 0
+
+            charts.append({
+                "id": f"donut_{col}",
+                "type": "donut",
+                "title": f"{col} Distribution",
+                "subtitle": f"Breakdown by {col}",
+                "data": data,
+                "colors": colors,
+            })
+        except Exception:
+            pass
+
+    # ── 3. Bar chart for top categorical values (if categorical + numeric exists) ──
+    if categorical_cols and numeric_cols:
+        cat_col = categorical_cols[0]
+        val_col = numeric_cols[0]
+        try:
+            grouped = df.groupby(cat_col)[val_col].sum().sort_values(ascending=False).head(10).reset_index()
+            grouped.columns = ["name", "value"]
+            data = []
+            for j, row in grouped.iterrows():
+                data.append({
+                    "name": str(row["name"]),
+                    "value": float(row["value"]),
+                    "color": VIBRANT_COLORS[j % len(VIBRANT_COLORS)],
+                })
+            charts.append({
+                "id": f"bar_{cat_col}_{val_col}",
+                "type": "bar",
+                "title": f"{val_col} by {cat_col}",
+                "subtitle": f"Top {len(data)} {cat_col} values",
+                "data": data,
+                "color": "#3b82f6",
+            })
+        except Exception:
+            pass
+
+    # ── 4. Horizontal bar for value counts (Grade distribution style) ──
+    for col in categorical_cols[:2]:
+        try:
+            counts = df[col].value_counts().head(15).reset_index()
+            counts.columns = ["name", "value"]
+            data = []
+            for j, row in counts.iterrows():
+                data.append({
+                    "name": str(row["name"]),
+                    "value": int(row["value"]),
+                    "color": VIBRANT_COLORS[j % len(VIBRANT_COLORS)],
+                })
+            charts.append({
+                "id": f"hbar_{col}",
+                "type": "horizontal_bar",
+                "title": f"{col} Breakdown",
+                "subtitle": f"Count by {col}",
+                "data": data,
+            })
+        except Exception:
+            pass
+
+    # ── 5. Day-of-week / weekday distribution (if datetime columns exist) ──
+    if datetime_cols:
+        dt_col = datetime_cols[0]
+        try:
+            days = df[dt_col].dropna().dt.day_name().value_counts()
+            day_order = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+            day_data = []
+            for day in day_order:
+                val = int(days.get(day, 0))
+                if val > 0:
+                    day_data.append({"name": day[:3], "value": val})
+            if day_data:
+                max_val = max(d["value"] for d in day_data)
+                for d in day_data:
+                    d["color"] = "#10b981" if d["value"] == max_val else "#3b82f6"
+                charts.append({
+                    "id": "weekday",
+                    "type": "bar",
+                    "title": "Distribution by Day of Week",
+                    "subtitle": "Activity by weekday",
+                    "data": day_data,
+                    "color": "#3b82f6",
+                })
+        except Exception:
+            pass
+
+    # ── 6. Top-N ranked list with progress bars ──
+    if categorical_cols:
+        col = categorical_cols[0]
+        try:
+            counts = df[col].value_counts().head(5).reset_index()
+            counts.columns = ["name", "value"]
+            total = int(df[col].notna().sum())
+            ranked_data = []
+            for j, row in counts.iterrows():
+                pct = round(row["value"] / total * 100, 1) if total else 0
+                ranked_data.append({
+                    "rank": j + 1,
+                    "name": str(row["name"]),
+                    "value": int(row["value"]),
+                    "percent": pct,
+                    "color": VIBRANT_COLORS[j % len(VIBRANT_COLORS)],
+                })
+            charts.append({
+                "id": f"ranked_{col}",
+                "type": "ranked_list",
+                "title": f"Top 5 {col}",
+                "subtitle": "Most frequent values",
+                "data": ranked_data,
+                "total": total,
+            })
+        except Exception:
+            pass
+
+    # ── 7. Recent daily trend (line chart) ──
+    if datetime_cols and numeric_cols:
+        dt_col = datetime_cols[0]
+        try:
+            ts = df[[dt_col]].dropna().copy()
+            ts[dt_col] = pd.to_datetime(ts[dt_col], errors="coerce")
+            ts = ts.dropna()
+            ts["date"] = ts[dt_col].dt.date
+            daily = ts.groupby("date").size().reset_index(name="count")
+            daily = daily.sort_values("date").tail(14)
+            daily["date"] = daily["date"].astype(str)
+            charts.append({
+                "id": "daily_trend",
+                "type": "line",
+                "title": "Recent Daily Trend",
+                "subtitle": "Last 14 days activity",
+                "data": daily.to_dict(orient="records"),
+                "dataKey": "count",
+                "xKey": "date",
+                "color": "#a855f7",
+            })
+        except Exception:
+            pass
+
+    # ── 8. Grouped bar chart (cross-tab of two categorical cols) ──
+    if len(categorical_cols) >= 2:
+        cat1, cat2 = categorical_cols[0], categorical_cols[1]
+        try:
+            # Only if cat2 has few unique values (like gender: Male/Female)
+            if df[cat2].nunique() <= 5:
+                cross = pd.crosstab(df[cat1], df[cat2]).head(10).reset_index()
+                data = []
+                group_keys = [str(c) for c in cross.columns if str(c) != cat1]
+                for _, row in cross.iterrows():
+                    entry = {"name": str(row[cat1])}
+                    for key in group_keys:
+                        entry[key] = int(row[key])
+                    data.append(entry)
+                charts.append({
+                    "id": f"grouped_{cat1}_{cat2}",
+                    "type": "grouped_bar",
+                    "title": f"{cat1} by {cat2}",
+                    "subtitle": f"Grouped breakdown",
+                    "data": data,
+                    "keys": group_keys,
+                    "colors": VIBRANT_COLORS[:len(group_keys)],
+                })
+        except Exception:
+            pass
+
+    # ── 9. Numeric distribution histograms ──
+    for col in numeric_cols[:2]:
+        try:
+            values = df[col].dropna()
+            if len(values) > 5:
+                hist, edges = np.histogram(values, bins=min(20, len(values)))
+                data = []
+                for j in range(len(hist)):
+                    data.append({
+                        "range": f"{edges[j]:.0f}-{edges[j+1]:.0f}",
+                        "value": int(hist[j]),
+                    })
+                charts.append({
+                    "id": f"hist_{col}",
+                    "type": "bar",
+                    "title": f"Distribution of {col}",
+                    "subtitle": f"Frequency histogram",
+                    "data": data,
+                    "color": "#06b6d4",
+                })
+        except Exception:
+            pass
+
+    return JSONResponse({"charts": charts})
+
+
+# ---------------------------------------------------------------------------
 # NEW: Chat With Dataset
 # ---------------------------------------------------------------------------
 
@@ -637,14 +968,27 @@ If you write a text answer, start it with "ANSWER:" followed by the answer.
 """
 
     try:
-        import google.generativeai as genai
-        import os
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        raw_response = ""  # Initialize before retry loop
+        last_error = None
+        for i in range(3):
+            try:
+                time.sleep(1)  # Burst protection
+                r = requests.post(url, json=payload, timeout=30)
+                if r.status_code == 429:
+                    time.sleep(3 * (i + 1))  # Exponential backoff
+                    continue
+                r.raise_for_status()
+                raw_response = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                break
+            except Exception as e:
+                last_error = e
+                time.sleep(2 * (i + 1))
 
-        api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyCGtbmCUh9YPcVeKDaGRQmumfQ3C9vbEnY")
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-pro")
-        response = model.generate_content(prompt)
-        raw_response = response.text.strip()
+        if not raw_response:
+            raise RuntimeError(f"AI service unavailable after retries: {last_error or 'rate limited'}")
 
         # Strip markdown code blocks if present
         if raw_response.startswith("```"):
@@ -735,16 +1079,29 @@ Write a professional data analysis report with these sections:
 Use professional language. Be specific with numbers. Format with markdown headers and bullet points.
 """
 
+    report_text = ""  # Initialize before retry loop
     try:
-        import google.generativeai as genai
-        import os
-
-        api_key = os.environ.get("GEMINI_API_KEY", "AIzaSyCGtbmCUh9YPcVeKDaGRQmumfQ3C9vbEnY")
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-pro")
-        response = model.generate_content(prompt)
-        report_text = response.text.strip()
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        last_error = None
+        for i in range(3):
+            try:
+                time.sleep(1)  # Burst protection
+                r = requests.post(url, json=payload, timeout=30)
+                if r.status_code == 429:
+                    time.sleep(3 * (i + 1))  # Exponential backoff
+                    continue
+                r.raise_for_status()
+                report_text = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                break
+            except Exception as e:
+                last_error = e
+                time.sleep(2 * (i + 1))
     except Exception as exc:
+        pass  # Fall through to fallback
+
+    if not report_text:
         # Fallback: generate a basic report without AI
         report_text = _generate_basic_report(df, shape, dup_count)
 

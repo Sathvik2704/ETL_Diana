@@ -19,7 +19,9 @@ class ExecutorAgent:
     def execute(self, df: pd.DataFrame, code: str) -> ExecutionResult:
         import numpy as np
         local_env = {"df": df, "pd": pd, "np": np}
-        exec(code, {}, local_env)
+        # __builtins__ MUST be in globals for import statements to work
+        global_env = {"__builtins__": __builtins__, "pd": pd, "np": np}
+        exec(code, global_env, local_env)
         df_result = local_env.get("df", df)
         return ExecutionResult(df=df_result, code=code)
 

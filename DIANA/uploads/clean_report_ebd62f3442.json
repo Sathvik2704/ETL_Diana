@@ -1,0 +1,122 @@
+{
+  "steps": [
+    {
+      "drop_duplicates": {
+        "removed": 0
+      }
+    },
+    {
+      "normalize_strings": true
+    },
+    {
+      "infer_types": true
+    },
+    {
+      "drop_sparse_columns": {
+        "threshold": 0.85,
+        "dropped": []
+      }
+    },
+    {
+      "drop_sparse_rows": {
+        "threshold": 0.85,
+        "dropped": 0
+      }
+    },
+    {
+      "impute_categorical": {
+        "library": "sklearn",
+        "strategy": "most_frequent",
+        "cols": [
+          "name"
+        ]
+      }
+    },
+    {
+      "impute_numeric": {
+        "strategy": "iterative_imputer",
+        "cols": [
+          "id",
+          "age"
+        ]
+      }
+    },
+    {
+      "outliers": {
+        "clipped_columns": [
+          "age"
+        ],
+        "clip_iqr_k": 3.0
+      }
+    }
+  ],
+  "notes": [
+    "Feature-engine categorical imputer failed; falling back to sklearn SimpleImputer: The variable name contains multiple frequent categories."
+  ],
+  "raw_shape": [
+    5,
+    3
+  ],
+  "dtypes": {
+    "datetime": [],
+    "numeric": [
+      "id",
+      "age"
+    ],
+    "categorical": [
+      "name"
+    ]
+  },
+  "diff_summary": {
+    "id": {
+      "raw_non_null": 5,
+      "clean_non_null": 5,
+      "raw_missing": 0,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 1.0,
+      "raw_max": 5.0,
+      "clean_min": 1.0,
+      "clean_max": 5.0
+    },
+    "name": {
+      "raw_non_null": 5,
+      "clean_non_null": 5,
+      "raw_missing": 0,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 5,
+      "clean_unique": 5,
+      "raw_top_values": {
+        "Alice": 1,
+        "Bob": 1,
+        "Charlie": 1
+      },
+      "clean_top_values": {
+        "Alice": 1,
+        "Bob": 1,
+        "Charlie": 1
+      }
+    },
+    "age": {
+      "raw_non_null": 3,
+      "clean_non_null": 5,
+      "raw_missing": 2,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 25.0,
+      "raw_max": 40.0,
+      "clean_min": 25.0,
+      "clean_max": 36.69599641335644
+    }
+  },
+  "clean_shape": [
+    5,
+    3
+  ],
+  "qa": {
+    "missing_values_total": 0,
+    "duplicate_rows_total": 0
+  },
+  "run_id": "ebd62f3442"
+}

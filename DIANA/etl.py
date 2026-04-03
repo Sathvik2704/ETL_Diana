@@ -18,24 +18,42 @@ def _apply_goal_rules(df: pd.DataFrame, goal: str) -> pd.DataFrame:
     - basic outlier removal
     - simple status filtering (failed / delivered / read)
     """
+    import re
     g = goal.lower()
     out = df.copy()
 
+    # Determine which columns are explicitly mentioned in the goal
+    mentioned_cols = []
+    for c in out.columns:
+        if c.lower() in g:
+            mentioned_cols.append(c)
+            
+    # If no specific columns are mentioned, assume ALL columns apply
+    target_cols = mentioned_cols if mentioned_cols else list(out.columns)
+
     # Duplicates.
-    if "drop duplicate" in g or "remove duplicate" in g or "deduplicate" in g:
-        out = out.drop_duplicates().reset_index(drop=True)
+    if re.search(r"(drop|remove|delete)\s+(the\s+)?duplicate", g) or "deduplicate" in g:
+        out = out.drop_duplicates(subset=target_cols if target_cols != list(out.columns) else None).reset_index(drop=True)
 
     # Remove missing rows.
-    if any(k in g for k in ("remove missing", "drop missing", "drop null", "drop na")):
-        out = out.dropna().reset_index(drop=True)
+    if re.search(r"(remove|drop|delete)\s+(the\s+)?(missing|null|na|nan)", g):
+        out = out.dropna(subset=target_cols).reset_index(drop=True)
 
     # Fill missing values.
-    if any(k in g for k in ("fill missing", "impute", "fill null", "fill na")):
-        for c in out.columns:
+    if re.search(r"(fill|impute|replace)\s+(the\s+)?(missing|null|na|nan)", g):
+        for c in target_cols:
             s = out[c]
             if pd.api.types.is_numeric_dtype(s):
                 if s.notna().any():
-                    out[c] = s.fillna(s.median())
+                    # Check for mean, median, mode preference
+                    if "mean" in g:
+                        out[c] = s.fillna(s.mean())
+                    elif "mode" in g:
+                        mode = s.mode(dropna=True)
+                        if not mode.empty:
+                            out[c] = s.fillna(mode.iloc[0])
+                    else:
+                        out[c] = s.fillna(s.median())
             else:
                 mode = s.mode(dropna=True)
                 if not mode.empty:
@@ -43,7 +61,7 @@ def _apply_goal_rules(df: pd.DataFrame, goal: str) -> pd.DataFrame:
 
     # Outlier removal (IQR-based) for numeric columns.
     if "outlier" in g:
-        num_cols = [c for c in out.columns if pd.api.types.is_numeric_dtype(out[c])]
+        num_cols = [c for c in target_cols if pd.api.types.is_numeric_dtype(out[c])]
         for c in num_cols:
             s = out[c]
             non_null = s.dropna()
@@ -54,13 +72,13 @@ def _apply_goal_rules(df: pd.DataFrame, goal: str) -> pd.DataFrame:
             iqr = q3 - q1
             if iqr == 0:
                 continue
-            lo = q1 - 3.0 * iqr
-            hi = q3 + 3.0 * iqr
+            lo = q1 - 1.5 * iqr
+            hi = q3 + 1.5 * iqr
             out = out[(s >= lo) & (s <= hi)]
         out = out.reset_index(drop=True)
 
     # Simple status filtering for common words.
-    if "filter" in g or "only" in g:
+    if any(word in g for word in ["filter", "only", "remove", "keep", "failed", "delivered", "read"]):
         status_col = None
         for c in out.columns:
             if str(c).strip().lower() in {"status", "delivery_status", "message_status", "state"}:
@@ -150,6 +168,8 @@ def run_etl(path: str, goal: str) -> str:
     for attempt in range(max_retries):
         try:
             code = coder.generate_code(plan, profile, error_msg=error_msg)
+            print(f"\n--- LLM GENERATED CODE ---\n{code}\n--------------------------\n")
+            with open("uploads/debug_code.py", "w") as f: f.write(code)
             last_code = code
         except Exception:  # noqa: BLE001
             break  # If LLM generation totally fails, fall back to rules

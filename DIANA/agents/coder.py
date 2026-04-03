@@ -32,6 +32,7 @@ class CoderAgent:
             plan.goal,
             profile.columns,
             value_hints=profile.value_hints,
+            dtypes=profile.dtypes,
             error_msg=error_msg,
         )
 

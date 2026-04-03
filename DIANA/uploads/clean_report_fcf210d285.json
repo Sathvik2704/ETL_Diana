@@ -1,0 +1,243 @@
+{
+  "steps": [
+    {
+      "drop_duplicates": {
+        "removed": 2
+      }
+    },
+    {
+      "normalize_strings": true
+    },
+    {
+      "infer_types": true
+    },
+    {
+      "drop_sparse_columns": {
+        "threshold": 0.85,
+        "dropped": []
+      }
+    },
+    {
+      "drop_sparse_rows": {
+        "threshold": 0.85,
+        "dropped": 0
+      }
+    },
+    {
+      "impute_datetime": {
+        "strategy": "ffill_bfill",
+        "cols": [
+          "OrderDate"
+        ]
+      }
+    },
+    {
+      "impute_categorical": {
+        "library": "feature_engine",
+        "strategy": "frequent",
+        "cols": [
+          "Region",
+          "Category",
+          "Product",
+          "PaymentMethod"
+        ]
+      }
+    },
+    {
+      "impute_numeric": {
+        "strategy": "iterative_imputer",
+        "cols": [
+          "OrderID",
+          "Quantity",
+          "UnitPrice",
+          "Discount",
+          "Revenue"
+        ]
+      }
+    },
+    {
+      "outliers": {
+        "clipped_columns": [
+          "Revenue"
+        ],
+        "clip_iqr_k": 3.0
+      }
+    }
+  ],
+  "notes": [],
+  "raw_shape": [
+    48,
+    10
+  ],
+  "dtypes": {
+    "datetime": [
+      "OrderDate"
+    ],
+    "numeric": [
+      "OrderID",
+      "Quantity",
+      "UnitPrice",
+      "Discount",
+      "Revenue"
+    ],
+    "categorical": [
+      "Region",
+      "Category",
+      "Product",
+      "PaymentMethod"
+    ]
+  },
+  "diff_summary": {
+    "OrderID": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 1002.0,
+      "raw_max": 1047.0,
+      "clean_min": 1002.0,
+      "clean_max": 1047.0
+    },
+    "OrderDate": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "datetime",
+      "raw_min": "2025-02-25 00:00:00",
+      "raw_max": "2026-02-19 00:00:00",
+      "clean_min": "2025-02-25 00:00:00",
+      "clean_max": "2026-02-19 00:00:00"
+    },
+    "Region": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 4,
+      "clean_unique": 4,
+      "raw_top_values": {
+        "East": 16,
+        "South": 10,
+        "North": 10
+      },
+      "clean_top_values": {
+        "East": 19,
+        "North": 10,
+        "South": 9
+      }
+    },
+    "Category": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 3,
+      "clean_unique": 3,
+      "raw_top_values": {
+        "Home": 17,
+        "Fashion": 16,
+        "Electronics": 11
+      },
+      "clean_top_values": {
+        "Home": 20,
+        "Fashion": 15,
+        "Electronics": 11
+      }
+    },
+    "Product": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 41,
+      "clean_unique": 41,
+      "raw_top_values": {
+        "by": 2,
+        "perhaps": 2,
+        "player": 2
+      },
+      "clean_top_values": {
+        "player": 6,
+        "by": 1,
+        "perhaps": 1
+      }
+    },
+    "Quantity": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 1.0,
+      "raw_max": 5.0,
+      "clean_min": 1.0,
+      "clean_max": 5.0
+    },
+    "UnitPrice": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 144.0,
+      "raw_max": 1957.0,
+      "clean_min": 144.0,
+      "clean_max": 1957.0
+    },
+    "Discount": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": 0.0,
+      "raw_max": 0.2,
+      "clean_min": 0.0,
+      "clean_max": 0.2
+    },
+    "Revenue": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "numeric",
+      "raw_min": -1105.2,
+      "raw_max": 283950.0,
+      "clean_min": -1105.2,
+      "clean_max": 20087.024999999998
+    },
+    "PaymentMethod": {
+      "raw_non_null": 44,
+      "clean_non_null": 46,
+      "raw_missing": 4,
+      "clean_missing": 0,
+      "kind": "categorical_or_text",
+      "raw_unique": 4,
+      "clean_unique": 4,
+      "raw_top_values": {
+        "Net Banking": 15,
+        "Debit Card": 12,
+        "Credit Card": 10
+      },
+      "clean_top_values": {
+        "Net Banking": 17,
+        "Debit Card": 12,
+        "Credit Card": 10
+      }
+    }
+  },
+  "clean_shape": [
+    46,
+    10
+  ],
+  "qa": {
+    "missing_values_total": 0,
+    "duplicate_rows_total": 0
+  },
+  "run_id": "fcf210d285"
+}

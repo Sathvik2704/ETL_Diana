@@ -1,0 +1,49 @@
+VisitID,VisitDate,Department,Doctor,PatientAge,Gender,InsuranceUsed,BillAmount
+V22,2025-11-17,Orthopedics,,25.0,Female,No,11545.0
+V29,2025-11-05,General,Rebecca Simpson,,Male,Yes,25665.0
+V3,2026-01-22,Pediatrics,Kimberly Matthews,17.0,Other,Yes,19221.0
+V4,2026-01-08,General,Robert Rodriguez,91.0,Female,Yes,46672.0
+V5,2026-01-29,Cardiology,Patricia Burns,26.0,Male,No,
+V6,2025-12-29,General,Craig Caldwell,75.0,Female,Yes,9051.0
+V7,2025-12-17,Cardiology,Charles Miller,70.0,Other,No,18760.0
+V8,2025-12-27,General,,74.0,Other,Yes,26338.0
+V9,2026-01-18,General,Heather Young,52.0,,Yes,43813.0
+V10,,Neurology,James Adkins,15.0,,No,19937.0
+V11,,General,Evelyn Alexander,55.0,Female,Yes,982.0
+V12,,General,William Harris,29.0,Male,No,14883.0
+V13,2026-01-10,Orthopedics,Zachary Dyer,46.0,Female,No,46971.0
+V14,2025-10-06,Cardiology,Brian Vasquez,24.0,Female,Yes,16315.0
+V15,2026-01-27,Pediatrics,Nathan Burns,9.0,Female,No,2590.0
+V16,2025-12-25,Neurology,Angela Franco,2.0,Male,No,21102.0
+V17,2026-01-18,Neurology,Gary Fowler,57.0,Female,Yes,
+V18,2025-10-08,Cardiology,Kerri Hunter,29.0,Male,Yes,41551.0
+V19,2026-02-16,General,Christina Evans,56.0,Male,Yes,1848.0
+V20,2025-11-08,Pediatrics,Misty Leon,57.0,Male,,26773.0
+V21,2025-10-14,,Matthew Ho,22.0,Female,Yes,41353.0
+V22,2025-11-17,Orthopedics,,25.0,Female,No,11545.0
+,2026-02-12,,,92.0,Female,,46406.0
+V24,2025-11-20,Pediatrics,Rita Jones,92.0,Female,Yes,21693.0
+V25,2026-01-15,Orthopedics,Michelle Clark,70.0,,No,9258.0
+V26,2025-11-10,Cardiology,John Santos,6.0,Other,No,25793.0
+V27,2026-01-19,,Jonathan Lyons,57.0,Other,Yes,26895.0
+V28,2026-01-20,Pediatrics,Keith King,,Female,Yes,19195.0
+V29,2025-11-05,General,Rebecca Simpson,,Male,Yes,25665.0
+,2025-12-20,Orthopedics,Sarah Johnson,54.0,Other,No,
+V31,2026-01-05,Orthopedics,Kelsey Navarro,56.0,Other,No,6513.0
+V32,2025-12-02,General,Teresa Williams,51.0,Male,,24175.0
+V33,,General,Wanda Johns MD,63.0,Other,No,18602.0
+V34,2025-11-19,Cardiology,Jason Sanchez,40.0,Female,No,31513.0
+V35,2025-09-24,Cardiology,Tammy Lambert,24.0,Other,,47276.0
+V36,2025-10-26,General,Jesus Bennett,87.0,Other,No,4478.0
+V37,2026-02-18,General,Philip Smith,55.0,Female,No,34764.0
+V38,2025-09-14,General,Holly Perez,37.0,Other,Yes,46144.0
+V39,2025-12-02,Pediatrics,Jonathan Vazquez,74.0,Female,No,13228.0
+V40,2025-10-29,Neurology,Kathryn Riley,65.0,Other,No,20683.0
+V41,2025-09-12,Orthopedics,Amy Williams,17.0,Male,No,36169.0
+,2026-02-18,Cardiology,Charles Ellis,,Male,Yes,21487.0
+V43,2025-12-12,General,Justin Jefferson,70.0,,Yes,15756.0
+V44,2025-10-14,Orthopedics,Riley Olson,47.0,Female,Yes,
+V45,2025-10-21,Pediatrics,Brian Hernandez,87.0,Female,No,42672.0
+V46,2025-09-13,,Andrea Wright,,Female,No,49636.0
+,2025-11-19,Pediatrics,,81.0,Female,Yes,3838.0
+V48,2025-11-01,General,Chad Compton,67.0,Female,Yes,20008.0

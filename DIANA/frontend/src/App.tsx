@@ -4,8 +4,14 @@ import {
   Upload, FileType, CheckCircle2, Play, AlertCircle, BarChart2,
   MessageSquare, FileText, Download, Activity, Database, Eye, Send, Loader2, TrendingUp
 } from 'lucide-react';
+import {
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
+  BarChart, Bar, PieChart, Pie, Cell, Legend, LineChart, Line,
+} from 'recharts';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
-const API = 'http://localhost:8000';
+const API = '';
 
 interface AlertProps {
   type: 'success' | 'error' | 'info';
@@ -54,7 +60,7 @@ export default function App() {
   // New feature states
   const [qualityData, setQualityData] = useState<any>(null);
   const [summaryData, setSummaryData] = useState<any>(null);
-  const [vizData, setVizData] = useState<any>(null);
+  const [dashboardData, setDashboardData] = useState<any>(null);
   const [chatMessages, setChatMessages] = useState<{ role: string; text: string }[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -65,6 +71,27 @@ export default function App() {
   const [summaryLoading, setSummaryLoading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
+
+  const downloadDashboardPDF = async () => {
+    if (!reportRef.current) return;
+    try {
+      const element = reportRef.current;
+      const canvas = await html2canvas(element, { 
+        backgroundColor: '#0f172a',
+        scale: 2 // Higher quality
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`DIANA_Dashboard_${Date.now()}.pdf`);
+    } catch (err) {
+      console.error("Failed to generate PDF snapshot", err);
+    }
+  };
 
   // The filename of the cleaned/processed file for use with endpoints
   const getResultFilename = () => {
@@ -135,7 +162,7 @@ export default function App() {
     setPreviewData(null);
     setQualityData(null);
     setSummaryData(null);
-    setVizData(null);
+    setDashboardData(null);
     setChatMessages([]);
     setReportData(null);
     setActiveTab('preview');
@@ -192,15 +219,15 @@ export default function App() {
     }
   };
 
-  // Load visualization suggestions
+  // Load dashboard visualizations
   const loadViz = async () => {
     const fn = getResultFilename();
     if (!fn) return;
     setVizLoading(true);
     try {
-      const res = await fetch(`${API}/viz-suggestions?filename=${encodeURIComponent(fn)}`);
+      const res = await fetch(`${API}/dashboard-data?filename=${encodeURIComponent(fn)}`);
       const data = await res.json();
-      setVizData(data);
+      setDashboardData(data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -213,7 +240,7 @@ export default function App() {
     setActiveTab(tab);
     if (tab === 'quality' && !qualityData && !qualityLoading) loadQuality();
     if (tab === 'summary' && !summaryData && !summaryLoading) loadSummary();
-    if (tab === 'viz' && !vizData && !vizLoading) loadViz();
+    if (tab === 'viz' && !dashboardData && !vizLoading) loadViz();
   };
 
   // Chat handler
@@ -392,34 +419,177 @@ export default function App() {
     );
   };
 
+  const darkTooltipStyle = { backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#e2e8f0', fontSize: '12px' };
+
+  const renderChartCard = (chart: any) => {
+    const cardClass = "bg-slate-900/80 rounded-2xl border border-slate-700/40 p-5 flex flex-col";
+    const titleBlock = (
+      <div className="mb-4">
+        <h4 className="text-sm font-bold text-white">{chart.title}</h4>
+        {chart.subtitle && <p className="text-xs text-slate-500 mt-0.5">{chart.subtitle}</p>}
+      </div>
+    );
+
+    if (chart.type === 'area') {
+      return (
+        <div className={cardClass} key={chart.id}>
+          {titleBlock}
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={chart.data}>
+              <defs>
+                <linearGradient id={`grad_${chart.id}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={chart.color} stopOpacity={0.4} />
+                  <stop offset="95%" stopColor={chart.color} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis dataKey={chart.xKey} tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={darkTooltipStyle} />
+              <Area type="monotone" dataKey={chart.dataKey} stroke={chart.color} fill={`url(#grad_${chart.id})`} strokeWidth={2} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    if (chart.type === 'bar') {
+      return (
+        <div className={cardClass} key={chart.id}>
+          {titleBlock}
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chart.data}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis dataKey={chart.data?.[0]?.range !== undefined ? 'range' : 'name'} tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} angle={-30} textAnchor="end" height={50} />
+              <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={darkTooltipStyle} />
+              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                {chart.data.map((entry: any, idx: number) => (
+                  <Cell key={idx} fill={entry.color || chart.color || '#3b82f6'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    if (chart.type === 'horizontal_bar') {
+      return (
+        <div className={cardClass} key={chart.id}>
+          {titleBlock}
+          <ResponsiveContainer width="100%" height={Math.max(200, chart.data.length * 28)}>
+            <BarChart data={chart.data} layout="vertical" margin={{ left: 10, right: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+              <XAxis type="number" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={90} />
+              <Tooltip contentStyle={darkTooltipStyle} />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={16}>
+                {chart.data.map((entry: any, idx: number) => (
+                  <Cell key={idx} fill={entry.color || '#3b82f6'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    if (chart.type === 'donut') {
+      return (
+        <div className={cardClass} key={chart.id}>
+          {titleBlock}
+          <ResponsiveContainer width="100%" height={240}>
+            <PieChart>
+              <Pie data={chart.data} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={3} dataKey="value" nameKey="name" stroke="none">
+                {chart.data.map((entry: any, idx: number) => (
+                  <Cell key={idx} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip contentStyle={darkTooltipStyle} formatter={(value: any, name: any, props: any) => [`${value} (${props.payload.percent}%)`, name]} />
+              <Legend iconType="circle" iconSize={8} formatter={(value: string) => <span style={{ color: '#94a3b8', fontSize: '11px' }}>{value}</span>} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    if (chart.type === 'line') {
+      return (
+        <div className={cardClass} key={chart.id}>
+          {titleBlock}
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={chart.data}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis dataKey={chart.xKey} tick={{ fill: '#64748b', fontSize: 9 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={darkTooltipStyle} />
+              <Line type="monotone" dataKey={chart.dataKey} stroke={chart.color} strokeWidth={2} dot={{ fill: chart.color, r: 3 }} activeDot={{ r: 5 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    if (chart.type === 'grouped_bar') {
+      return (
+        <div className={cardClass} key={chart.id}>
+          {titleBlock}
+          <ResponsiveContainer width="100%" height={Math.max(220, chart.data.length * 30)}>
+            <BarChart data={chart.data} layout="vertical" margin={{ left: 10, right: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+              <XAxis type="number" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={90} />
+              <Tooltip contentStyle={darkTooltipStyle} />
+              <Legend iconType="circle" iconSize={8} formatter={(v: string) => <span style={{ color: '#94a3b8', fontSize: '11px' }}>{v}</span>} />
+              {chart.keys.map((key: string, idx: number) => (
+                <Bar key={key} dataKey={key} fill={chart.colors[idx]} radius={[0, 4, 4, 0]} barSize={14} />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    if (chart.type === 'ranked_list') {
+      return (
+        <div className={cardClass} key={chart.id}>
+          {titleBlock}
+          <div className="space-y-3 mt-1">
+            {chart.data.map((item: any) => (
+              <div key={item.rank} className="flex items-center gap-3">
+                <span className="text-xs font-bold text-slate-400 w-5">{item.rank}.</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-sm font-medium text-white truncate">{item.name}</span>
+                    <span className="text-xs text-slate-400 ml-2 whitespace-nowrap">{item.value} ({item.percent}%)</span>
+                  </div>
+                  <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${item.percent}%`, backgroundColor: item.color }} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   const renderVizTab = () => {
     if (vizLoading) return <div className="flex items-center justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-blue-400" /></div>;
-    if (!vizData) return <p className="text-slate-400 p-8 text-center">Click to load auto-generated visualizations</p>;
-    if (!vizData.charts || vizData.charts.length === 0) return <p className="text-slate-400 p-8 text-center">No visualizations could be generated for this dataset.</p>;
+    if (!dashboardData) return <p className="text-slate-400 p-8 text-center">Click to load auto-generated visualizations</p>;
+    if (!dashboardData.charts || dashboardData.charts.length === 0) return <p className="text-slate-400 p-8 text-center">No visualizations could be generated for this dataset.</p>;
     return (
       <div className="p-6 space-y-6">
-        <h4 className="text-sm font-semibold text-white">AI-Suggested Visualizations ({vizData.charts.length} charts)</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {vizData.charts.map((chart: any, i: number) => (
-            <div key={i} className="bg-slate-800/40 rounded-xl border border-slate-700/50 overflow-hidden">
-              <div className="p-3 border-b border-slate-700/40 flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-mono text-blue-400 uppercase">{chart.type}</span>
-                  <p className="text-sm text-white font-medium mt-0.5">{chart.title}</p>
-                </div>
-                <a href={`${API}${chart.url}`} target="_blank" rel="noreferrer"
-                   className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
-                  Open ↗
-                </a>
-              </div>
-              <iframe
-                src={`${API}${chart.url}`}
-                className="w-full h-64 border-0 bg-white"
-                title={chart.title}
-              />
-              <p className="text-xs text-slate-500 px-3 py-2">{chart.description}</p>
-            </div>
-          ))}
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-semibold text-white">Dashboard ({dashboardData.charts.length} charts)</h4>
+          <button onClick={() => { setDashboardData(null); loadViz(); }} className="text-xs text-blue-400 hover:text-blue-300 transition-colors">Refresh ↻</button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {dashboardData.charts.map((chart: any) => renderChartCard(chart))}
         </div>
       </div>
     );
@@ -510,25 +680,47 @@ export default function App() {
             {reportData.html_url && (
               <a href={`${API}${reportData.html_url}`} target="_blank" rel="noreferrer"
                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 rounded-xl text-sm font-medium border border-blue-500/30 transition-colors">
-                <Eye className="w-4 h-4" /> View HTML Report
+                <Eye className="w-4 h-4" /> View Backend Report
               </a>
             )}
-            {reportData.pdf_url && (
-              <a href={`${API}${reportData.pdf_url}`} target="_blank" rel="noreferrer"
-                 className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 rounded-xl text-sm font-medium border border-indigo-500/30 transition-colors">
-                <Download className="w-4 h-4" /> Download PDF Report
-              </a>
-            )}
+            <button
+               onClick={downloadDashboardPDF}
+               className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-medium border border-indigo-500/30 transition-colors shadow-lg shadow-indigo-500/25">
+              <Download className="w-4 h-4" /> Download Dashboard PDF
+            </button>
             <button onClick={generateReport}
                     className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium border border-slate-600 transition-colors">
-              Regenerate
+              Regenerate Text Options
             </button>
           </div>
-          {reportData.report_text && (
-            <div className="bg-slate-800/40 rounded-xl p-6 border border-slate-700/50">
-              <pre className="text-sm text-slate-300 whitespace-pre-wrap font-sans leading-relaxed">{reportData.report_text}</pre>
+          
+          {/* Printable Combined Container */}
+          <div ref={reportRef} className="bg-slate-900/50 p-6 rounded-2xl border border-slate-700/50 space-y-8">
+            <div className="border-b border-slate-700/50 pb-4 mb-6">
+              <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400">
+                Data Analysis Dashboard
+              </h2>
+              <p className="text-slate-400 text-sm mt-1">Generated by DIANA AI</p>
             </div>
-          )}
+            
+            {/* The Text Report */}
+            {reportData.report_text && (
+              <div className="bg-slate-800/40 rounded-xl p-6 border border-slate-700/50">
+                <h3 className="text-lg font-semibold text-white mb-4">AI Analysis</h3>
+                <pre className="text-sm text-slate-300 whitespace-pre-wrap font-sans leading-relaxed">{reportData.report_text}</pre>
+              </div>
+            )}
+
+            {/* The Recharts Dashboard Array */}
+            {dashboardData?.charts && dashboardData.charts.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-4 mt-8">Auto-Generated Visualizations</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {dashboardData.charts.map((chart: any) => renderChartCard(chart))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -830,6 +1022,34 @@ export default function App() {
                             </tbody>
                           </table>
                         </div>
+
+                        {/* Render inline artifacts if present */}
+                        {result?.artifacts && Object.keys(result.artifacts).length > 0 && (
+                          <div className="p-6 border-t border-slate-700/50 space-y-4">
+                            <h3 className="text-sm font-medium text-white mb-4">Generated Visualizations</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {Object.entries(result.artifacts).map(([key, url]) => {
+                                // Only show HTML charts inline
+                                if (key.endsWith('_html') && typeof url === 'string') {
+                                  return (
+                                    <div key={key} className="bg-slate-800/40 rounded-xl border border-slate-700/50 overflow-hidden">
+                                      <div className="p-3 border-b border-slate-700/40 flex items-center justify-between bg-slate-800">
+                                        <span className="text-xs font-mono text-blue-400 capitalize">{key.replace('_html', '').replace('_', ' ')}</span>
+                                        <a href={`${API}${url}`} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:text-blue-300">Open ↗</a>
+                                      </div>
+                                      <iframe
+                                        src={`${API}${url}`}
+                                        className="w-full h-80 border-0 bg-white"
+                                        title={key}
+                                      />
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="p-8 text-center">

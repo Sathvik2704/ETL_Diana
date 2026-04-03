@@ -1,0 +1,49 @@
+StudentID,Name,Class,Math,Science,English,AttendancePercent
+S22,Ashley Reyes,10B,25.0,16.0,13.0,
+S27,Patricia Aguilar,10A,,11.0,,93.0
+S3,Jeffrey Greer,10A,87.0,45.0,22.0,71.0
+S4,Ashley Carney,10C,104.0,100.0,58.0,72.0
+S5,,10B,94.0,35.0,45.0,101.0
+S6,Yolanda Schroeder,10A,56.0,77.0,108.0,20.0
+S7,Rodney Smith,10A,87.0,28.0,,58.0
+S8,Trevor Short,10B,68.0,70.0,44.0,21.0
+S9,Cody Hicks,10C,64.0,20.0,43.0,93.0
+S10,David Villegas,10C,64.0,99.0,74.0,62.0
+S11,Beth Washington,10A,107.0,37.0,39.0,30.0
+S12,,10B,104.0,107.0,98.0,17.0
+S13,Daniel Gomez,10C,,61.0,119.0,1.0
+S14,Francisco Clark,10C,111.0,46.0,42.0,53.0
+S15,Robert Smith,10B,96.0,55.0,7.0,64.0
+S16,Claudia Myers,10A,109.0,27.0,34.0,
+S17,Christian Andrews,10B,7.0,40.0,71.0,102.0
+S18,Megan Gallagher,,25.0,2.0,76.0,58.0
+S19,,,76.0,47.0,40.0,
+S20,Jonathan Padilla,10A,119.0,110.0,33.0,38.0
+S21,Nicole Watkins,,108.0,115.0,52.0,100.0
+S22,Ashley Reyes,10B,25.0,16.0,13.0,
+,Michelle Macias,10B,69.0,91.0,40.0,34.0
+S24,Shannon Hayden,10B,96.0,88.0,58.0,51.0
+S25,Ryan Ruiz,10C,103.0,96.0,61.0,2.0
+S26,Roger Jackson,10B,3.0,66.0,16.0,109.0
+S27,Patricia Aguilar,10A,,11.0,,93.0
+S28,David Long,,97.0,59.0,89.0,51.0
+S29,Samuel Davis,10A,25.0,81.0,100.0,16.0
+S30,Tyler Irwin,10B,54.0,88.0,115.0,89.0
+S31,Joshua Lambert,10C,113.0,14.0,76.0,91.0
+S32,Denise Wilson,10C,6.0,65.0,35.0,83.0
+,Dustin Ward,10B,16.0,,82.0,13.0
+S34,Wendy Li,10B,,,44.0,86.0
+S35,Jacob Dodson,10C,83.0,109.0,22.0,31.0
+S36,,10A,106.0,97.0,105.0,43.0
+,Matthew Chavez,10B,15.0,63.0,101.0,53.0
+S38,Robin Diaz,10A,83.0,0.0,108.0,86.0
+S39,Mario Williams,10A,33.0,48.0,57.0,64.0
+S40,Michele Navarro,10B,34.0,26.0,36.0,11.0
+S41,Jeffrey Bell,10A,53.0,40.0,,94.0
+S42,Brandon Nunez,10B,37.0,26.0,67.0,26.0
+S43,Jessica Simmons,10C,100.0,117.0,57.0,60.0
+S44,Lydia Brown,10A,33.0,,24.0,18.0
+S45,Ana Brown,10B,81.0,61.0,115.0,
+S46,Teresa Johnson,10A,67.0,33.0,104.0,76.0
+,Donald Melendez,10B,116.0,45.0,,81.0
+S48,Todd Jordan,10B,49.0,100.0,7.0,57.0

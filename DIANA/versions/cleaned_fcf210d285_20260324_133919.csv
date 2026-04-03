@@ -1,0 +1,47 @@
+OrderID,OrderDate,Region,Category,Product,Quantity,UnitPrice,Discount,Revenue,PaymentMethod
+1034.0,2025-06-19,East,Fashion,by,2.0,791.0,0.1,1423.8,Net Banking
+1022.0,2025-09-04,South,Home,perhaps,1.0,518.0,0.05,492.1,Net Banking
+1002.0,2025-07-27,East,Home,hear,3.0,434.0,0.05,1257.9162524879594,Debit Card
+1003.0,2026-01-07,North,Fashion,agree,3.0,144.0,0.05,410.4,Credit Card
+1004.0,2026-01-07,South,Fashion,whom,5.0,1007.0,0.0,10844.607202700088,Credit Card
+1005.0,2025-11-26,West,Fashion,fund,1.0,600.0,0.05,570.0,Net Banking
+1024.514766903061,2025-10-18,North,Fashion,against,3.0,911.0,0.2,2186.4,UPI
+1007.0,2025-08-07,East,Electronics,situation,1.0,1120.0,0.1,1008.0,Debit Card
+1008.0,2025-04-02,East,Fashion,player,1.0,652.0,0.05,619.4,Debit Card
+1009.0,2025-12-11,West,Home,picture,1.0,1047.0,0.1,942.3,Debit Card
+1010.0,2025-12-18,East,Electronics,from,2.0,1173.0,0.05,20087.024999999998,Debit Card
+1011.0,2026-02-12,North,Electronics,the,2.0,802.0,0.08844444466901474,1523.8,Net Banking
+1012.0,2026-02-17,West,Home,arm,2.0,193.0,0.1,347.4,Debit Card
+1013.0,2025-12-29,East,Fashion,marriage,4.0,1090.0,0.08234893647308411,3924.0,Net Banking
+1014.0,2025-10-07,South,Home,remember,4.0,645.0,0.2,2064.0,UPI
+1015.0,2026-02-03,North,Home,interesting,5.0,1588.0,0.05,7543.0,Net Banking
+1016.0,2025-09-04,South,Electronics,personal,3.0,1033.1497136848466,0.08344698404402984,240.0,Debit Card
+1017.0,2026-01-23,East,Home,forget,4.0,313.0,0.1,1126.8,UPI
+1018.0,2026-01-23,West,Fashion,for,3.0,1037.8268250640976,0.2,2071.2,Net Banking
+1019.0,2026-01-05,South,Electronics,message,3.0,1281.0,0.1,3458.7,Net Banking
+1020.0,2025-04-14,South,Home,camera,1.0,1396.0,0.05,1326.2,Net Banking
+1021.0,2025-12-13,North,Electronics,player,3.0,1893.0,0.0,20087.024999999998,Net Banking
+1024.624287907139,2025-05-25,North,Fashion,cell,5.0,939.0,0.2,3756.0,Debit Card
+1024.0,2025-07-30,North,Fashion,morning,2.0,1034.6622976357226,0.05,832.2,UPI
+1029.796924349173,2026-02-03,East,Home,would,4.0,1752.0,0.0,7008.0,Net Banking
+1026.7464305344909,2026-02-03,West,Fashion,look,1.0,1228.0,0.1,-1105.2,Net Banking
+1027.0,2025-05-23,West,Electronics,economy,2.0,1629.0,0.0,3258.0,Credit Card
+1028.0,2025-07-17,East,Electronics,past,3.0,1049.0,0.2,11528.162625567385,Net Banking
+1029.0,2025-03-15,East,Home,avoid,1.0,1357.0,0.05,1289.15,Credit Card
+1030.0,2026-01-16,South,Fashion,song,3.0,1939.0,0.1,5235.3,UPI
+1031.0,2025-02-25,East,Electronics,fear,1.0,251.0,0.2,200.8,Net Banking
+1032.0,2025-07-04,West,Home,charge,2.3855637688611426,322.0,0.0,1610.0,Net Banking
+1033.0,2025-08-07,South,Fashion,tend,3.0,362.0,0.2,868.8,Debit Card
+1035.0,2025-08-26,West,Home,door,5.0,1356.0,0.05,6441.0,Credit Card
+1036.0,2025-10-02,East,Home,fact,5.0,1814.0,0.06246329648813875,8616.5,Net Banking
+1037.0,2026-02-19,East,Home,american,4.0,1366.0,0.0,16825.459078265107,UPI
+1038.0,2025-03-27,South,Home,player,1.0,1957.0,0.1,1761.3,Credit Card
+1039.0,2025-11-15,East,Home,number,4.0,1816.0,0.1,6537.6,Debit Card
+1040.0,2025-06-12,North,Electronics,player,2.756631269388386,921.0,0.1,828.9,Credit Card
+1041.0,2026-01-18,East,Electronics,decade,2.82851257807531,1034.4075989667012,0.05,732.45,Credit Card
+1042.0,2025-08-11,East,Home,race,3.36658313440613,1915.0,0.1,5170.5,Debit Card
+1043.0,2025-06-03,North,Home,also,2.0,801.0,0.0,1602.0,Debit Card
+1044.0,2025-11-15,East,Home,player,4.0,578.0,0.0,2312.0,Net Banking
+1045.0,2025-08-13,East,Fashion,why,5.0,1939.0,0.0,9695.0,Credit Card
+1046.0,2025-08-13,North,Fashion,national,5.0,1229.0,0.05,5837.75,UPI
+1047.0,2025-08-23,East,Home,player,2.0,620.0,0.0,1240.0,Credit Card

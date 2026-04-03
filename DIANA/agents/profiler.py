@@ -9,6 +9,7 @@ import pandas as pd
 class DatasetProfile:
     columns: list[str]
     value_hints: dict[str, list[str]]
+    dtypes: dict[str, str]
 
 
 class ProfilerAgent:
@@ -19,6 +20,8 @@ class ProfilerAgent:
 
     def profile(self, df: pd.DataFrame, *, max_values_per_col: int = 20) -> DatasetProfile:
         value_hints: dict[str, list[str]] = {}
+        dtypes: dict[str, str] = {str(c): str(df[c].dtype) for c in df.columns}
+
         for col in df.columns:
             s = df[col]
             if not (pd.api.types.is_object_dtype(s) or pd.api.types.is_string_dtype(s)):
@@ -33,5 +36,5 @@ class ProfilerAgent:
             if uniq:
                 value_hints[str(col)] = uniq
 
-        return DatasetProfile(columns=[str(c) for c in df.columns], value_hints=value_hints)
+        return DatasetProfile(columns=[str(c) for c in df.columns], value_hints=value_hints, dtypes=dtypes)
 
