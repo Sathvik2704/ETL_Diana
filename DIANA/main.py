@@ -217,6 +217,11 @@ def _record_history(user_id: str, run_id: str, original_filename: str, cleaned_f
 
 @app.get("/", response_class=HTMLResponse)
 async def index() -> str:
+    # In production, serve the React frontend build
+    react_index = BASE_DIR / "frontend" / "dist" / "index.html"
+    if react_index.exists():
+        return react_index.read_text(encoding="utf-8")
+    # Fallback to old basic HTML page (local dev without build)
     html_path = BASE_DIR / "index.html"
     if html_path.exists():
         return html_path.read_text(encoding="utf-8")
