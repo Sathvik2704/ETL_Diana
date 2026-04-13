@@ -16,6 +16,7 @@ export default defineConfig({
       '/chat': 'http://127.0.0.1:8000',
       '/generate-report': 'http://127.0.0.1:8000',
       '/export': 'http://127.0.0.1:8000',
+      '/history': 'http://127.0.0.1:8000',
     },
   },
 })

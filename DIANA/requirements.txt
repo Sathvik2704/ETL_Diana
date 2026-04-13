@@ -1,9 +1,12 @@
 fastapi
-uvicorn
+uvicorn[standard]
+gunicorn
 pandas
 numpy
 requests
 python-multipart
+python-dotenv
+supabase
 pytest
 scikit-learn
 feature-engine

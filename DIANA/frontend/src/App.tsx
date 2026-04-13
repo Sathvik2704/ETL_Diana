@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import Papa from 'papaparse';
 import {
   Upload, FileType, CheckCircle2, Play, AlertCircle, BarChart2,
-  MessageSquare, FileText, Download, Activity, Database, Eye, Send, Loader2, TrendingUp
+  MessageSquare, FileText, Download, Activity, Database, Eye, Send, Loader2, TrendingUp, Clock
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -10,6 +10,11 @@ import {
 } from 'recharts';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const API = '';
 
@@ -42,12 +47,46 @@ const TABS = [
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'report', label: 'Report', icon: FileText },
   { id: 'log', label: 'Transform Log', icon: BarChart2 },
+  { id: 'history', label: 'History', icon: Clock },
   { id: 'export', label: 'Export', icon: Download },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
 
 export default function App() {
+  const [session, setSession] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  React.useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogin = async () => {
+    await supabase.auth.signInWithOAuth({ provider: 'google' });
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const getHeaders = () => {
+    const headers: Record<string, string> = {};
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+    return headers;
+  };
+
   const [file, setFile] = useState<File | null>(null);
   const [goal, setGoal] = useState('');
   const [mode, setMode] = useState<'llm' | 'deterministic'>('llm');
@@ -174,12 +213,14 @@ export default function App() {
     const endpoint = mode === 'llm' ? `${API}/process` : `${API}/transform`;
 
     try {
-      const response = await fetch(endpoint, { method: 'POST', body: formData });
+      const response = await fetch(endpoint, { method: 'POST', body: formData, headers: getHeaders() });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || data.error || "An error occurred.");
       setResult(data);
       const downloadUrl = data.download_url || data.download_cleaned_url;
       if (downloadUrl) await loadCsvPreview(downloadUrl);
+      // Auto-refresh history after successful transformation
+      if (user) loadHistory();
     } catch (err: any) {
       setError(err.message || "Failed to connect. Is the backend running?");
     } finally {
@@ -193,7 +234,7 @@ export default function App() {
     if (!fn) return;
     setQualityLoading(true);
     try {
-      const res = await fetch(`${API}/data-quality?filename=${encodeURIComponent(fn)}`);
+      const res = await fetch(`${API}/data-quality?filename=${encodeURIComponent(fn)}`, { headers: getHeaders() });
       const data = await res.json();
       setQualityData(data);
     } catch (err) {
@@ -209,7 +250,7 @@ export default function App() {
     if (!fn) return;
     setSummaryLoading(true);
     try {
-      const res = await fetch(`${API}/data-summary?filename=${encodeURIComponent(fn)}`);
+      const res = await fetch(`${API}/data-summary?filename=${encodeURIComponent(fn)}`, { headers: getHeaders() });
       const data = await res.json();
       setSummaryData(data);
     } catch (err) {
@@ -225,7 +266,7 @@ export default function App() {
     if (!fn) return;
     setVizLoading(true);
     try {
-      const res = await fetch(`${API}/dashboard-data?filename=${encodeURIComponent(fn)}`);
+      const res = await fetch(`${API}/dashboard-data?filename=${encodeURIComponent(fn)}`, { headers: getHeaders() });
       const data = await res.json();
       setDashboardData(data);
     } catch (err) {
@@ -235,12 +276,29 @@ export default function App() {
     }
   };
 
+  // Load user history
+  const loadHistory = async () => {
+    if (!user) return;
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`${API}/history`, { headers: getHeaders() });
+      if (!res.ok) throw new Error("Failed to load history");
+      const data = await res.json();
+      setHistoryData(data.history || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   // Handle tab click with lazy loading
   const handleTabClick = (tab: TabId) => {
     setActiveTab(tab);
     if (tab === 'quality' && !qualityData && !qualityLoading) loadQuality();
     if (tab === 'summary' && !summaryData && !summaryLoading) loadSummary();
     if (tab === 'viz' && !dashboardData && !vizLoading) loadViz();
+    if (tab === 'history' && !historyLoading) loadHistory();
   };
 
   // Chat handler
@@ -254,7 +312,7 @@ export default function App() {
     try {
       const res = await fetch(`${API}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getHeaders() },
         body: JSON.stringify({ filename: fn, question }),
       });
       const data = await res.json();
@@ -272,7 +330,7 @@ export default function App() {
     if (!fn) return;
     setReportLoading(true);
     try {
-      const res = await fetch(`${API}/generate-report?filename=${encodeURIComponent(fn)}`, { method: 'POST' });
+      const res = await fetch(`${API}/generate-report?filename=${encodeURIComponent(fn)}`, { method: 'POST', headers: getHeaders() });
       const data = await res.json();
       setReportData(data);
     } catch (err) {
@@ -759,6 +817,42 @@ export default function App() {
     );
   };
 
+  const renderHistoryTab = () => {
+    if (!user) return (
+      <div className="text-center p-12">
+        <Clock className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+        <h4 className="text-lg font-semibold text-slate-300 mb-2">Login Required</h4>
+        <p className="text-slate-400">Please login to view your transformation history across devices.</p>
+        <button onClick={handleLogin} className="mt-4 bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg text-white font-medium shadow-lg transition-colors">Log in with Google</button>
+      </div>
+    );
+    if (historyLoading) return <div className="flex items-center justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-blue-400" /></div>;
+    if (historyData.length === 0) return <p className="text-slate-400 p-8 text-center">No history found. Try uploading and transforming a file!</p>;
+    
+    return (
+      <div className="p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-semibold text-white">Your Past Transformations</h4>
+          <button onClick={() => loadHistory()} className="text-xs text-blue-400 hover:text-blue-300 transition-colors">Refresh ↻</button>
+        </div>
+        <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+          {historyData.map((item: any) => (
+            <div key={item.id} className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/50 hover:bg-slate-800/60 transition-colors">
+               <div className="flex justify-between items-center mb-2">
+                 <span className="text-blue-400 font-medium text-sm truncate pr-4">{item.original_filename}</span>
+                 <span className="text-slate-500 text-xs whitespace-nowrap">{new Date(item.timestamp).toLocaleString()}</span>
+               </div>
+               <div className="flex gap-2 mt-3 flex-wrap">
+                 {item.cleaned_file_url && <a href={item.cleaned_file_url} target="_blank" rel="noreferrer" className="text-xs bg-slate-700/50 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-slate-300 transition block">Download Clean Data</a>}
+                 {item.report_file_url && <a href={item.report_file_url} target="_blank" rel="noreferrer" className="text-xs bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 px-3 py-1.5 rounded-lg text-indigo-300 transition block">View Report</a>}
+               </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const renderExportTab = () => {
     const fn = getResultFilename();
     if (!fn) return <p className="text-slate-400 p-8 text-center">Process a dataset first to enable exports.</p>;
@@ -797,8 +891,20 @@ export default function App() {
       <div className="max-w-7xl mx-auto space-y-8">
 
         {/* Header */}
-        <header className="text-center space-y-4">
-          <div className="inline-flex items-center justify-center p-3 glass-panel mb-4 shadow-blue-500/20">
+        <header className="text-center space-y-4 relative">
+          <div className="absolute top-0 right-0 flex items-center justify-end z-10 w-full md:w-auto mt-4 md:mt-0 right-4">
+            {user ? (
+               <div className="flex items-center gap-3 bg-slate-800/80 backdrop-blur border border-slate-700 px-3 py-1.5 rounded-xl shadow-lg">
+                 <span className="text-xs text-slate-300 hidden sm:inline">{user.email}</span>
+                 <button onClick={handleLogout} className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded transition bg-slate-700/50 hover:bg-red-500/80">Logout</button>
+               </div>
+            ) : (
+               <button onClick={handleLogin} className="bg-blue-600 hover:bg-blue-500 border border-blue-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-all shadow-lg hover:shadow-blue-500/25 flex items-center gap-2">
+                 Log in
+               </button>
+            )}
+          </div>
+          <div className="inline-flex items-center justify-center p-3 glass-panel mb-4 shadow-blue-500/20 md:mt-4">
             <BarChart2 className="w-8 h-8 text-[var(--color-primary)]" />
           </div>
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400">
@@ -1063,6 +1169,7 @@ export default function App() {
                   {activeTab === 'chat' && renderChatTab()}
                   {activeTab === 'report' && renderReportTab()}
                   {activeTab === 'log' && renderLogTab()}
+                  {activeTab === 'history' && renderHistoryTab()}
                   {activeTab === 'export' && renderExportTab()}
                 </div>
               </div>

@@ -4,22 +4,25 @@ import time
 import json
 from pathlib import Path
 
-# Securely load environment variables from .env
 # Securely load environment variables from .env if present
-env_path = Path(__file__).parent / ".env"
-if env_path.exists():
-    for line in env_path.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, val = line.split("=", 1)
-            os.environ[key.strip()] = val.strip()
+def _load_env():
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, val = line.split("=", 1)
+                os.environ.setdefault(key.strip(), val.strip())
+
+_load_env()
 
 _OLLAMA_URL = "http://localhost:11434/api/generate"
 _MODEL_CANDIDATES = ["llama3", "mistral"]
 _OLLAMA_TIMEOUT_S = 20
 
-# Setup Gemini API key
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+def _get_gemini_key() -> str:
+    """Always read the key fresh from env so .env changes are picked up on reload."""
+    return os.environ.get("GEMINI_API_KEY", "")
 
 def _has_internet_connection() -> bool:
     try:
@@ -94,28 +97,43 @@ Ensure the final result is strictly stored in the variable `df`.
     return prompt.strip()
 
 def _call_gemini(prompt: str) -> str:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+    api_key = _get_gemini_key()
+    if not api_key:
+        raise Exception("GEMINI_API_KEY is empty or not set in .env")
+    
+    # Try multiple models — if one is rate-limited, try the next
+    # Updated April 2026: gemini-2.0-flash EOL'd March 31, 2026
+    models = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
     payload = {
         "contents": [{"parts":[{"text": prompt}]}]
     }
     
-    # Improved retry loop for 429/500
     last_error = None
-    for i in range(3):
-        try:
-            time.sleep(1) # Small delay to avoid burst
-            r = requests.post(url, json=payload, timeout=20)
-            if r.status_code == 429:
-                last_error = Exception(f"Rate limited (429) on attempt {i+1}/3")
-                time.sleep(4)
-                continue
-            r.raise_for_status()
-            data = r.json()
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception as e:
-            last_error = e
-            time.sleep(2)
-    raise Exception(f"Gemini API failed after retries. Last error: {last_error}")
+    for model in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        for attempt in range(3):
+            try:
+                delay = 2 * (attempt + 1)  # 2s, 4s, 6s backoff
+                time.sleep(delay)
+                r = requests.post(url, json=payload, timeout=30)
+                if r.status_code == 429:
+                    last_error = Exception(f"Rate limited (429) on {model} attempt {attempt+1}/3")
+                    print(f"  [Gemini] Rate limited on {model} attempt {attempt+1}/3, waiting {delay*2}s...")
+                    time.sleep(delay * 2)
+                    continue
+                if r.status_code != 200:
+                    print(f"  [Gemini] {model} HTTP {r.status_code}: {r.text[:300]}")
+                r.raise_for_status()
+                data = r.json()
+                result = data["candidates"][0]["content"]["parts"][0]["text"]
+                print(f"  [Gemini] Success with {model}")
+                return result
+            except Exception as e:
+                last_error = e
+                print(f"  [Gemini] {model} attempt {attempt+1}/3 failed: {e}")
+                time.sleep(2)
+        print(f"  [Gemini] All retries exhausted for {model}, trying next model...")
+    raise Exception(f"Gemini API failed after trying all models. Last error: {last_error}")
 
 def _canonical_call(model: str, prompt: str) -> str:
     r = requests.post(
@@ -161,15 +179,22 @@ def generate_transformation(
     last_err: Exception | None = None
     code = ""
     
-    if _has_internet_connection():
-        print("Using Google AI Studio (Gemini)...")
+    gemini_key = _get_gemini_key()
+    has_internet = _has_internet_connection()
+    
+    print(f"[LLM] Internet: {has_internet}, Gemini key present: {bool(gemini_key)} (key starts with: {gemini_key[:10]}...)")
+    
+    if has_internet and gemini_key:
+        print("[LLM] Using Google AI Studio (Gemini)...")
         try:
             code = _call_gemini(prompt)
+            print(f"[LLM] Gemini returned {len(code)} chars of code")
         except Exception as exc:
-            print(f"Gemini call failed: {exc}. Falling back to Ollama.")
+            print(f"[LLM] Gemini call FAILED: {exc}. Falling back to Ollama.")
             last_err = exc
             code = ""
-            
+    elif not gemini_key:
+        print("[LLM] No GEMINI_API_KEY found — skipping Gemini, using Ollama directly.")
     if not code:
         print("Using local Ollama...")
         for model in _MODEL_CANDIDATES:

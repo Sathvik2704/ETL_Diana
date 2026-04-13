@@ -8,13 +8,38 @@ from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, Form, HTTPException, UploadFile, File, Query
+from fastapi import FastAPI, Form, HTTPException, UploadFile, File, Query, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from dotenv import load_dotenv
 
 from etl import run_etl
 from cleaning import CleanConfig, clean_dataframe
+
+load_dotenv(override=True)  # override=True ensures .env values take precedence
+
+from supabase import create_client, Client
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+# Prefer service_role key (bypasses RLS) for backend; fall back to anon key
+_service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+_anon_key = os.environ.get("SUPABASE_KEY")
+print(f"[Startup] SUPABASE_SERVICE_KEY present: {bool(_service_key)}, SUPABASE_KEY present: {bool(_anon_key)}")
+if _service_key:
+    print(f"[Startup] Service key starts with: {_service_key[:20]}...")
+SUPABASE_KEY = _service_key or _anon_key
+_key_type = "service_role" if _service_key else "anon"
+supabase: Client | None = None
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print(f"[Startup] Supabase client initialized for {SUPABASE_URL} (using {_key_type} key)")
+    except Exception as e:
+        print(f"[Startup] Failed to initialize Supabase: {e}")
+else:
+    print(f"[Startup] WARNING: Supabase NOT configured. SUPABASE_URL={'set' if SUPABASE_URL else 'MISSING'}, Key={'set' if SUPABASE_KEY else 'MISSING'}")
+    print(f"[Startup] TIP: Set SUPABASE_SERVICE_KEY in .env (from Supabase Dashboard → Settings → API → service_role key)")
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -23,17 +48,23 @@ VERSIONS_DIR = BASE_DIR / "versions"
 
 app = FastAPI(title="DIANA – Intelligent ETL & Analytics Platform")
 
-# Allow a React dev server (and other local tools) to call this API.
+# CORS: Allow React dev server + deployed frontends
+_cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+]
+# In production, also allow the Render URL (or any custom domain)
+_render_url = os.environ.get("RENDER_EXTERNAL_URL")
+if _render_url:
+    _cors_origins.append(_render_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -132,6 +163,53 @@ def _build_transformation_log(report: dict) -> list[dict]:
             })
     return log
 
+# ---------------------------------------------------------------------------
+# Supabase Integration Helpers
+# ---------------------------------------------------------------------------
+
+def get_current_user_optional(authorization: str = Header(None)):
+    if not supabase or not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.split(" ")[1]
+    try:
+        res = supabase.auth.get_user(token)
+        return res.user
+    except Exception:
+        return None
+
+def _upload_to_supabase(local_file_path: Path) -> str | None:
+    if not supabase: return None
+    bucket = "datasets"
+    file_name = f"{uuid.uuid4().hex[:8]}_{local_file_path.name}"
+    try:
+        # Use simple upload
+        supabase.storage.from_(bucket).upload(file_name, str(local_file_path), {"upsert": "true"})
+        return supabase.storage.from_(bucket).get_public_url(file_name)
+    except Exception as e:
+        print(f"Supabase upload error: {e}")
+        return None
+
+def _record_history(user_id: str, run_id: str, original_filename: str, cleaned_file_url: str | None, report_file_url: str | None, transformation_log: list):
+    if not supabase:
+        print("[Supabase] Client not initialized - skipping history record")
+        return
+    try:
+        data = {
+            "user_id": user_id,
+            "run_id": run_id,
+            "original_filename": original_filename,
+            "cleaned_file_url": cleaned_file_url,
+            "report_file_url": report_file_url,
+            "transformation_log": transformation_log
+        }
+        print(f"[Supabase] Inserting history: user_id={user_id}, run_id={run_id}, filename={original_filename}")
+        result = supabase.table("transform_history").insert(data).execute()
+        print(f"[Supabase] Insert successful: {result.data}")
+    except Exception as e:
+        import traceback
+        print(f"[Supabase] Failed to record history: {e}")
+        print(f"[Supabase] Full traceback:\n{traceback.format_exc()}")
+
 
 # ---------------------------------------------------------------------------
 # Original endpoints (updated)
@@ -144,11 +222,22 @@ async def index() -> str:
         return html_path.read_text(encoding="utf-8")
     return "<h1>DIANA ETL Platform</h1><p>Use the React frontend at localhost:5173</p>"
 
+@app.get("/history")
+async def get_history(user = Depends(get_current_user_optional)) -> JSONResponse:
+    if not supabase or not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        res = supabase.table("transform_history").select("*").eq("user_id", user.id).order("timestamp", desc=True).execute()
+        return JSONResponse({"history": res.data})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
 
 @app.post("/process")
 async def process(
     file: UploadFile = File(...),
     goal: str = Form(...),
+    user = Depends(get_current_user_optional)
 ) -> JSONResponse:
     """
     Accepts a file upload and a natural-language goal, then runs the ETL pipeline.
@@ -307,6 +396,21 @@ async def process(
         except Exception as exc:
             warnings.append(f"Visualization step failed: {exc}")
 
+    # Upload to Supabase and save history if user is logged in
+    cleaned_url = None
+    if output_file and Path(output_file).exists():
+        cleaned_url = _upload_to_supabase(Path(output_file))
+        
+    if user:
+        _record_history(
+            user_id=user.id,
+            run_id=run_id,
+            original_filename=file.filename or "unknown",
+            cleaned_file_url=cleaned_url,
+            report_file_url=None, 
+            transformation_log=transformation_log
+        )
+
     return JSONResponse({
         "output_file": output_file,
         "output_filename": output_filename,
@@ -321,6 +425,7 @@ async def process(
 @app.post("/transform")
 async def transform(
     file: UploadFile = File(...),
+    user = Depends(get_current_user_optional)
 ) -> JSONResponse:
     """
     Deterministic "raw -> clean" transform (no LLM required).
@@ -400,6 +505,24 @@ async def transform(
         artifacts["profile_html"] = f"/download/{profile_path.name}"
     except Exception:
         pass
+
+    # Upload to Supabase and save history
+    cleaned_url = None
+    report_url = None
+    if cleaned_path.exists():
+        cleaned_url = _upload_to_supabase(cleaned_path)
+    if report_path.exists():
+        report_url = _upload_to_supabase(report_path)
+        
+    if user:
+        _record_history(
+            user_id=user.id,
+            run_id=run_id,
+            original_filename=file.filename or "unknown",
+            cleaned_file_url=cleaned_url,
+            report_file_url=report_url,
+            transformation_log=transformation_log
+        )
 
     return JSONResponse({
         "run_id": run_id,
@@ -969,7 +1092,7 @@ If you write a text answer, start it with "ANSWER:" followed by the answer.
 
     try:
         api_key = os.environ.get("GEMINI_API_KEY", "")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         raw_response = ""  # Initialize before retry loop
         last_error = None
@@ -1082,7 +1205,7 @@ Use professional language. Be specific with numbers. Format with markdown header
     report_text = ""  # Initialize before retry loop
     try:
         api_key = os.environ.get("GEMINI_API_KEY", "")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         last_error = None
         for i in range(3):
@@ -1364,3 +1487,29 @@ async def download_output(filename: str) -> FileResponse:
         media_type=media_type,
         headers={"Content-Disposition": f'{disposition}; filename="{path.name}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Production: Serve React frontend from frontend/dist
+# ---------------------------------------------------------------------------
+
+FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
+
+if FRONTEND_DIST.exists():
+    # Serve static assets (JS, CSS, images)
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="static-assets")
+
+    # Catch-all: serve index.html for any non-API route (SPA client-side routing)
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # If the file exists in dist, serve it (e.g., favicon.ico, manifest.json)
+        file_path = FRONTEND_DIST / full_path
+        if full_path and file_path.exists() and file_path.is_file():
+            return FileResponse(str(file_path))
+        # Otherwise serve index.html for client-side routing
+        return FileResponse(str(FRONTEND_DIST / "index.html"))
+
+    print(f"[Startup] Serving React frontend from {FRONTEND_DIST}")
+else:
+    print(f"[Startup] No frontend build found at {FRONTEND_DIST}. Run 'cd frontend && npm run build' to enable.")
+
